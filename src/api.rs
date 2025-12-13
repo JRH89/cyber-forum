@@ -38,6 +38,14 @@ pub struct NewComment {
     pub content: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct User {
+    pub id: String,
+    pub username: String,
+    pub password_hash: String,
+    pub created_at: String,
+}
+
 fn client() -> Client {
     Client::new()
 }

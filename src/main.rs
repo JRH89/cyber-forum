@@ -9,15 +9,15 @@ use ratatui::{
     backend::{Backend, CrosstermBackend},
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Span, Spans, Text},
+    text::{Span, Line},
     widgets::{Block, Borders, List, ListItem, Paragraph, Clear},
     Terminal,
 };
 use anyhow::Result;
 
 mod app;
-mod database; // Kept for legacy struct references if any, but logic moved to api
-mod models;
+// mod database; // Removed
+// mod models; // Removed
 mod api;
 
 use app::{App, AppState, CurrentFocus};
@@ -83,14 +83,14 @@ async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Resul
     }
 }
 
-fn ui<B: Backend>(f: &mut ratatui::Frame<B>, app: &App) {
+fn ui(f: &mut ratatui::Frame, app: &App) {
     match app.state {
         AppState::Login => draw_login_screen(f, app),
         AppState::Forum => draw_forum_ui(f, app),
     }
 }
 
-fn draw_login_screen<B: Backend>(f: &mut ratatui::Frame<B>, app: &App) {
+fn draw_login_screen(f: &mut ratatui::Frame, app: &App) {
     let size = f.size();
     let chunks = Layout::default()
         .direction(Direction::Vertical)
@@ -117,7 +117,7 @@ fn draw_login_screen<B: Backend>(f: &mut ratatui::Frame<B>, app: &App) {
     } else {
         Style::default().fg(Color::White)
     };
-    let username = Paragraph::new(app.username_input.as_ref())
+    let username = Paragraph::new(app.username_input.as_str())
         .style(username_style)
         .block(Block::default().borders(Borders::ALL).title("Username"));
     f.render_widget(username, chunks[1]);
@@ -134,7 +134,7 @@ fn draw_login_screen<B: Backend>(f: &mut ratatui::Frame<B>, app: &App) {
     f.render_widget(password, chunks[2]);
 }
 
-fn draw_forum_ui<B: Backend>(f: &mut ratatui::Frame<B>, app: &App) {
+fn draw_forum_ui(f: &mut ratatui::Frame, app: &App) {
     let size = f.size();
     
     // Check if we are in a modal mode (NewThread or Reply)
@@ -205,7 +205,7 @@ fn centered_rect(percent_x: u16, percent_y: u16, r: Rect) -> Rect {
         .split(popup_layout[1])[1]
 }
 
-fn draw_thread_list<B: Backend>(f: &mut ratatui::Frame<B>, app: &App, area: Rect) {
+fn draw_thread_list(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let items: Vec<ListItem> = app
         .threads
         .iter()
@@ -228,7 +228,7 @@ fn draw_thread_list<B: Backend>(f: &mut ratatui::Frame<B>, app: &App, area: Rect
     f.render_stateful_widget(list, area, &mut state);
 }
 
-fn draw_conversation<B: Backend>(f: &mut ratatui::Frame<B>, app: &App, area: Rect) {
+fn draw_conversation(f: &mut ratatui::Frame, app: &App, area: Rect) {
     let block = Block::default().borders(Borders::ALL).title("Conversation");
     f.render_widget(block, area);
 
@@ -237,18 +237,18 @@ fn draw_conversation<B: Backend>(f: &mut ratatui::Frame<B>, app: &App, area: Rec
     if let Some(thread) = app.get_current_thread() {
         // Simple rendering: Title, Content, then comments
         let mut text = vec![
-            Spans::from(Span::styled(format!("Title: {}", thread.title), Style::default().add_modifier(Modifier::BOLD))),
-            Spans::from(Span::raw(format!("Author: {}", thread.author))),
-            Spans::from(Span::raw("")),
-            Spans::from(Span::raw(&thread.content)),
-            Spans::from(Span::raw("")),
-            Spans::from(Span::styled("--- Comments ---", Style::default().fg(Color::Gray))),
+            Line::from(Span::styled(format!("Title: {}", thread.title), Style::default().add_modifier(Modifier::BOLD))),
+            Line::from(Span::raw(format!("Author: {}", thread.author))),
+            Line::from(Span::raw("")),
+            Line::from(Span::raw(&thread.content)),
+            Line::from(Span::raw("")),
+            Line::from(Span::styled("--- Comments ---", Style::default().fg(Color::Gray))),
         ];
         
         for comment in &app.comments {
-            text.push(Spans::from(Span::styled(format!("{}:", comment.author), Style::default().fg(Color::Cyan))));
-            text.push(Spans::from(Span::raw(&comment.content)));
-            text.push(Spans::from(Span::raw("")));
+            text.push(Line::from(Span::styled(format!("{}:", comment.author), Style::default().fg(Color::Cyan))));
+            text.push(Line::from(Span::raw(&comment.content)));
+            text.push(Line::from(Span::raw("")));
         }
         
         let paragraph = Paragraph::new(text).wrap(ratatui::widgets::Wrap { trim: true });

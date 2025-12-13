@@ -1,7 +1,7 @@
 // src/app.rs
-use crate::api::{self, Thread, NewThread, NewComment};
-use crate::models::{User, Comment};
-use ratatui::widgets::ListState;
+use crate::api::{self, Thread, NewThread, NewComment, User, Comment};
+// use crate::models::{User, Comment};
+// use ratatui::widgets::ListState;
 
 #[derive(PartialEq)]
 pub enum AppState {
