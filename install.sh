@@ -1,16 +1,16 @@
 #!/bin/bash
 set -e
 
-# Cyber Forum Installer
+# Ternimal Installer
 # Installs the TUI client, creates a desktop entry, and sets up the hotkey.
 
-APP_NAME="cyber-forum"
+APP_NAME="ternimal"
 BIN_DIR="$HOME/.local/bin"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_PATH="$HOME/.local/share/icons"
 REPO_DIR="$(pwd)"
 
-echo "🚀 Installing Cyber Forum..."
+echo "🚀 Installing Ternimal..."
 
 # 0. Check Dependencies & OS
 echo "🔍 Checking system..."
@@ -50,12 +50,12 @@ fi
 
 # 1. Build the client
 echo "📦 Building release binary..."
-cargo build --release --bin cyber-forum
+cargo build --release --bin ternimal
 
 # 2. Install binary
 echo "📂 Installing binary to $BIN_DIR..."
 mkdir -p "$BIN_DIR"
-cp target/release/cyber-forum "$BIN_DIR/"
+cp target/release/ternimal "$BIN_DIR/"
 
 # 3. Create Desktop Entry
 echo "🖥️ Creating desktop entry..."
@@ -68,9 +68,9 @@ mkdir -p "$ICON_PATH"
 cat <<EOF > "$DESKTOP_DIR/$APP_NAME.desktop"
 [Desktop Entry]
 Type=Application
-Name=Cyber Forum
+Name=Ternimal
 Comment=The exclusive terminal forum for Omarchy
-Exec=$BIN_DIR/cyber-forum
+Exec=$BIN_DIR/ternimal
 Icon=utilities-terminal
 Terminal=true
 Categories=Network;ConsoleOnly;
@@ -85,7 +85,7 @@ FORUM_USER=${INPUT_USER:-$USER}
 read -s -p "   Enter Password: " FORUM_PASS
 echo ""
 
-CONFIG_DIR="$HOME/.config/cyber-forum"
+CONFIG_DIR="$HOME/.config/ternimal"
 mkdir -p "$CONFIG_DIR"
 cat <<EOF > "$CONFIG_DIR/config.json"
 {
@@ -101,6 +101,6 @@ echo ""
 echo "To set up the Super+Shift+P hotkey:"
 echo "  - GNOME: Settings -> Keyboard -> View and Customize Shortcuts -> Custom Shortcuts"
 echo "  - KDE: System Settings -> Shortcuts -> Custom Shortcuts"
-echo "  - Hyprland/Sway/i3: Add 'bindsym \$mod+Shift+p exec $BIN_DIR/cyber-forum' to your config."
+echo "  - Hyprland/Sway/i3: Add 'bindsym \$mod+Shift+p exec $BIN_DIR/ternimal' to your config."
 echo ""
-echo "Run 'cyber-forum' to start!"
+echo "Run 'ternimal' to start!"

@@ -106,7 +106,7 @@ fn draw_login_screen<B: Backend>(f: &mut ratatui::Frame<B>, app: &App) {
         )
         .split(size);
 
-    let title = Paragraph::new("CYBER FORUM LOGIN")
+    let title = Paragraph::new("TERNIMAL LOGIN")
         .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
         .alignment(ratatui::layout::Alignment::Center)
         .block(Block::default().borders(Borders::ALL));

@@ -67,7 +67,7 @@ impl App {
 
     pub fn load_config(&mut self) {
         if let Ok(home) = std::env::var("HOME") {
-            let config_path = std::path::Path::new(&home).join(".config/cyber-forum/config.json");
+            let config_path = std::path::Path::new(&home).join(".config/ternimal/config.json");
             if config_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(config_path) {
                     if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
