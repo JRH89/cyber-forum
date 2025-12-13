@@ -1,0 +1,25 @@
+# render.yaml – Render configuration for Cyber Forum
+services:
+  - type: web
+    name: forum-server
+    env: rust
+    # Build the binary in release mode
+    buildCommand: cargo build -p forum_server --release
+    # The compiled binary lives at target/release/forum_server
+    startCommand: ./target/release/forum_server
+    # Render automatically forwards port 8080, keep the bind call as‑is.
+    envVars:
+      # DATABASE_URL is injected automatically by the PostgreSQL add‑on.
+      # If you enable Redis, uncomment the line below.
+      # REDIS_URL: ${REDIS_URL}
+    autoDeploy: true
+
+databases:
+  - name: forum-db
+    postgres:
+      plan: free
+
+# Optional Redis cache (uncomment to enable)
+#redis:
+#  - name: forum-cache
+#    plan: free
