@@ -2,12 +2,14 @@
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use actix_ws::Message;
 use serde::{Deserialize, Serialize};
+use serde_json;
 use uuid::Uuid;
 use chrono::Utc;
 use sqlx::{PgPool, query, query_as};
 use std::env;
 use std::sync::Arc;
 use tokio::sync::RwLock;
+use futures_util::StreamExt;
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 struct Thread {
@@ -174,6 +176,66 @@ async fn create_category(db: web::Data<Db>, payload: web::Json<serde_json::Value
     HttpResponse::Created().finish()
 }
 
+#[get("/auth/check-username/{username}")]
+async fn check_username(db: web::Data<Db>, path: web::Path<String>) -> impl Responder {
+    let username = path.into_inner();
+    let exists = sqlx::query(
+        r#"SELECT COUNT(*) as count FROM users WHERE username = $1"#
+    )
+    .bind(&username)
+    .fetch_one(&**db)
+    .await
+    .map(|row: (i64,)| row.0 > 0)
+    .unwrap_or(false);
+    
+    HttpResponse::Ok().json(serde_json::json!({
+        "available": !exists,
+        "username": username
+    }))
+}
+
+#[post("/auth/register")]
+async fn register_user(db: web::Data<Db>, payload: web::Json<serde_json::Value>) -> impl Responder {
+    let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("");
+    
+    // Check if username already exists
+    let exists = sqlx::query(
+        r#"SELECT COUNT(*) as count FROM users WHERE username = $1"#
+    )
+    .bind(username)
+    .fetch_one(&**db)
+    .await
+    .map(|row: (i64,)| row.0 > 0)
+    .unwrap_or(false);
+    
+    if exists {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Username already taken"
+        }));
+    }
+    
+    // Create new user
+    let user_id = Uuid::new_v4().to_string();
+    let created_at = Utc::now().to_rfc3339();
+    
+    let _ = sqlx::query(
+        r#"INSERT INTO users (id, username, password_hash, created_at)
+           VALUES ($1, $2, $3, $4)"#
+    )
+    .bind(&user_id)
+    .bind(username)
+    .bind("") // No password
+    .bind(&created_at)
+    .execute(&**db)
+    .await;
+    
+    HttpResponse::Created().json(serde_json::json!({
+        "id": user_id,
+        "username": username,
+        "created_at": created_at
+    }))
+}
+
 #[get("/threads/{id}/comments")]
 async fn list_comments(db: web::Data<Db>, path: web::Path<String>) -> impl Responder {
     let thread_id = path.into_inner();
@@ -244,17 +306,28 @@ async fn websocket_index(
     broadcaster.write().await.push(session.clone());
     
     // Keep the connection alive
-    actix_ws::handle(&mut session, |msg| async move {
+    let (response, session, mut msg_stream) = actix_ws::handle(&mut session, |msg| async move {
         match msg {
             Message::Ping(_) => Ok(Message::Pong(vec![])),
             _ => Ok(Message::Close(None)),
         }
-    }).await?;
+    })?;
+    
+    // Handle messages
+    while let Some(msg_result) = msg_stream.next().await {
+        match msg_result {
+            Ok(Message::Ping(_)) => {
+                let _ = session.pong(&[]).await;
+            }
+            Ok(Message::Close(_)) => break,
+            _ => {}
+        }
+    }
     
     // Remove session from broadcaster when disconnected
-    broadcaster.write().await.retain(|s| s.id() != session.id());
+    broadcaster.write().await.retain(|s| std::ptr::eq(&*s, &session));
     
-    Ok(HttpResponse::Ok().finish())
+    Ok(response)
 }
 
 #[actix_web::main]
@@ -340,6 +413,8 @@ async fn main() -> std::io::Result<()> {
             .service(create_comment)
             .service(list_categories)
             .service(create_category)
+            .service(check_username)
+            .service(register_user)
             .service(websocket_index)
     })
     .bind(("0.0.0.0", 8080))?

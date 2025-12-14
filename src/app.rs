@@ -2,6 +2,8 @@
 use crate::api::{self, Thread, NewThread, NewComment, User, Comment, Category};
 // use crate::models::{User, Comment};
 // use ratatui::widgets::ListState;
+use uuid::Uuid;
+use chrono;
 
 #[derive(PartialEq)]
 pub enum AppState {
@@ -97,15 +99,16 @@ impl App {
     }
     
     pub async fn login(&mut self) -> anyhow::Result<()> {
-        // For now, we just assume login is successful if fields are non-empty
-        // In a real app, we'd hit an auth endpoint.
-        // We'll create a dummy user object.
-        self.current_user = Some(User {
-            id: "local-session".to_string(),
-            username: self.username_input.clone(),
-            password_hash: "".to_string(),
-            created_at: chrono::Utc::now().to_rfc3339(),
-        });
+        // Check if username is available
+        let username_available = api::check_username_available(&self.username_input).await?;
+        
+        if !username_available {
+            return Err(anyhow::anyhow!("Username '{}' is already taken", self.username_input));
+        }
+        
+        // Register the user
+        let user = api::register_user(&self.username_input).await?;
+        self.current_user = Some(user);
         self.state = AppState::Forum;
         self.focus = CurrentFocus::ThreadList;
         

@@ -140,3 +140,27 @@ pub async fn create_category(name: String, description: Option<String>) -> Resul
         .await?;
     Ok(())
 }
+
+pub async fn check_username_available(username: &str) -> Result<bool> {
+    let resp = client()
+        .get(&format!("{}/auth/check-username/{}", BASE_URL, username))
+        .send()
+        .await?;
+    let result: serde_json::Value = resp.json().await?;
+    Ok(result.get("available").and_then(|v| v.as_bool()).unwrap_or(false))
+}
+
+pub async fn register_user(username: &str) -> Result<User> {
+    let payload = serde_json::json!({
+        "username": username
+    });
+    
+    let resp = client()
+        .post(&format!("{}/auth/register", BASE_URL))
+        .json(&payload)
+        .send()
+        .await?;
+    
+    let user = resp.json::<User>().await?;
+    Ok(user)
+}
