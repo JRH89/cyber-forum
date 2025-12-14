@@ -260,7 +260,15 @@ async fn main() -> std::io::Result<()> {
     )
     .execute(&pool)
     .await;
-
+    
+    // Add image_url columns to existing tables (for backwards compatibility)
+    let _ = sqlx::query("ALTER TABLE threads ADD COLUMN IF NOT EXISTS image_url TEXT")
+        .execute(&pool)
+        .await;
+    let _ = sqlx::query("ALTER TABLE comments ADD COLUMN IF NOT EXISTS image_url TEXT")
+        .execute(&pool)
+        .await;
+    
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))

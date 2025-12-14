@@ -103,6 +103,6 @@ pub fn create_data_url(image_path: &str) -> Result<String> {
         _ => "image/png", // default
     };
     
-    let base64_data = base64::encode(&image_data);
+    let base64_data = base64::engine::general_purpose::STANDARD.encode(&image_data);
     Ok(format!("data:{};base64,{}", mime_type, base64_data))
 }
