@@ -29,7 +29,7 @@ struct NewThread {
 struct Comment {
     id: String,
     thread_id: String,
-    user_id: String,
+    author: String,
     content: String,
     created_at: String,
 }
@@ -126,7 +126,7 @@ async fn create_thread(db: web::Data<Db>, broadcaster: web::Data<Broadcaster>, p
 async fn list_comments(db: web::Data<Db>, path: web::Path<String>) -> impl Responder {
     let thread_id = path.into_inner();
     let rows = sqlx::query_as::<_, Comment>(
-        r#"SELECT c.id, $1 as thread_id, u.username as user_id, c.content, c.created_at
+        r#"SELECT c.id, $1 as thread_id, u.username as author, c.content, c.created_at
            FROM comments c JOIN users u ON c.user_id = u.id
            WHERE c.thread_id = $2 ORDER BY c.created_at ASC"#
     )
