@@ -16,6 +16,15 @@ struct Thread {
     author: String,
     content: String,
     image_url: Option<String>,
+    category_id: Option<String>,
+    created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+struct Category {
+    id: String,
+    name: String,
+    description: Option<String>,
     created_at: String,
 }
 
@@ -25,6 +34,7 @@ struct NewThread {
     author: String,
     content: String,
     image_url: Option<String>,
+    category_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
@@ -58,7 +68,7 @@ type Broadcaster = Arc<RwLock<Vec<actix_ws::Session>>>;
 #[get("/threads")]
 async fn list_threads(db: web::Data<Db>) -> impl Responder {
     let rows = sqlx::query_as::<_, Thread>(
-        r#"SELECT t.id, t.title, u.username as author, t.content, t.image_url, t.created_at
+        r#"SELECT t.id, t.title, u.username as author, t.content, t.image_url, t.category_id, t.created_at
            FROM threads t JOIN users u ON t.user_id = u.id
            ORDER BY t.created_at DESC"#
     )
@@ -95,14 +105,15 @@ async fn create_thread(db: web::Data<Db>, broadcaster: web::Data<Broadcaster>, p
     let user_id = user_row.0;
     // Insert thread
     let _ = sqlx::query(
-        r#"INSERT INTO threads (id, title, user_id, content, image_url, created_at)
-           VALUES ($1, $2, $3, $4, $5, $6)"#
+        r#"INSERT INTO threads (id, title, user_id, content, image_url, category_id, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)"#
     )
     .bind(id.clone())
     .bind(payload.title.clone())
     .bind(user_id)
     .bind(payload.content.clone())
     .bind(payload.image_url.clone())
+    .bind(payload.category_id.clone())
     .bind(created_at.clone())
     .execute(&**db)
     .await;
@@ -114,6 +125,7 @@ async fn create_thread(db: web::Data<Db>, broadcaster: web::Data<Broadcaster>, p
         author: payload.author.clone(),
         content: payload.content.clone(),
         image_url: payload.image_url.clone(),
+        category_id: payload.category_id.clone(),
         created_at: created_at.clone(),
     };
     
@@ -124,6 +136,40 @@ async fn create_thread(db: web::Data<Db>, broadcaster: web::Data<Broadcaster>, p
             let _ = session.text(msg_json.clone()).await;
         }
     }
+    
+    HttpResponse::Created().finish()
+}
+
+#[get("/categories")]
+async fn list_categories(db: web::Data<Db>) -> impl Responder {
+    let rows = sqlx::query_as::<_, Category>(
+        r#"SELECT id, name, description, created_at
+           FROM categories ORDER BY name ASC"#
+    )
+    .fetch_all(&**db)
+    .await
+    .unwrap_or_else(|_| vec![]);
+    
+    HttpResponse::Ok().json(rows)
+}
+
+#[post("/categories")]
+async fn create_category(db: web::Data<Db>, payload: web::Json<serde_json::Value>) -> impl Responder {
+    let id = Uuid::new_v4().to_string();
+    let created_at = Utc::now().to_rfc3339();
+    let name = payload.get("name").and_then(|v| v.as_str()).unwrap_or("General");
+    let description = payload.get("description").and_then(|v| v.as_str());
+    
+    let _ = sqlx::query(
+        r#"INSERT INTO categories (id, name, description, created_at)
+           VALUES ($1, $2, $3, $4)"#
+    )
+    .bind(id)
+    .bind(name)
+    .bind(description)
+    .bind(created_at)
+    .execute(&**db)
+    .await;
     
     HttpResponse::Created().finish()
 }
@@ -234,14 +280,26 @@ async fn main() -> std::io::Result<()> {
     .execute(&pool)
     .await;
     let _ = sqlx::query(
+        r#"CREATE TABLE IF NOT EXISTS categories (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                description TEXT,
+                created_at TEXT NOT NULL
+            );"#
+    )
+    .execute(&pool)
+    .await;
+    let _ = sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS threads (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL,
                 user_id TEXT NOT NULL,
                 content TEXT NOT NULL,
                 image_url TEXT,
+                category_id TEXT,
                 created_at TEXT NOT NULL,
-                FOREIGN KEY (user_id) REFERENCES users(id)
+                FOREIGN KEY (user_id) REFERENCES users(id),
+                FOREIGN KEY (category_id) REFERENCES categories(id)
             );"#
     )
     .execute(&pool)
@@ -268,6 +326,9 @@ async fn main() -> std::io::Result<()> {
     let _ = sqlx::query("ALTER TABLE comments ADD COLUMN IF NOT EXISTS image_url TEXT")
         .execute(&pool)
         .await;
+    let _ = sqlx::query("ALTER TABLE threads ADD COLUMN IF NOT EXISTS category_id TEXT")
+        .execute(&pool)
+        .await;
     
     HttpServer::new(move || {
         App::new()
@@ -277,6 +338,8 @@ async fn main() -> std::io::Result<()> {
             .service(create_thread)
             .service(list_comments)
             .service(create_comment)
+            .service(list_categories)
+            .service(create_category)
             .service(websocket_index)
     })
     .bind(("0.0.0.0", 8080))?

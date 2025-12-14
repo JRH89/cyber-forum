@@ -2,6 +2,7 @@
 use anyhow::Result;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
+use base64::Engine;
 
 // Base URL of the server
 const BASE_URL: &str = "https://cyber-forum.onrender.com";
@@ -13,6 +14,15 @@ pub struct Thread {
     pub author: String,
     pub content: String,
     pub image_url: Option<String>,
+    pub category_id: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Category {
+    pub id: String,
+    pub name: String,
+    pub description: Option<String>,
     pub created_at: String,
 }
 
@@ -22,6 +32,7 @@ pub struct NewThread {
     pub author: String,
     pub content: String,
     pub image_url: Option<String>,
+    pub category_id: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -105,4 +116,27 @@ pub fn create_data_url(image_path: &str) -> Result<String> {
     
     let base64_data = base64::engine::general_purpose::STANDARD.encode(&image_data);
     Ok(format!("data:{};base64,{}", mime_type, base64_data))
+}
+
+pub async fn list_categories() -> Result<Vec<Category>> {
+    let resp = client()
+        .get(&format!("{}/categories", BASE_URL))
+        .send()
+        .await?;
+    let categories = resp.json::<Vec<Category>>().await?;
+    Ok(categories)
+}
+
+pub async fn create_category(name: String, description: Option<String>) -> Result<()> {
+    let payload = serde_json::json!({
+        "name": name,
+        "description": description
+    });
+    
+    client()
+        .post(&format!("{}/categories", BASE_URL))
+        .json(&payload)
+        .send()
+        .await?;
+    Ok(())
 }

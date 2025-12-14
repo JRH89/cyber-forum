@@ -1,5 +1,5 @@
 // src/app.rs
-use crate::api::{self, Thread, NewThread, NewComment, User, Comment};
+use crate::api::{self, Thread, NewThread, NewComment, User, Comment, Category};
 // use crate::models::{User, Comment};
 // use ratatui::widgets::ListState;
 
@@ -14,6 +14,7 @@ pub enum CurrentFocus {
     Username,
     Password,
     ThreadList,
+    Categories,
     Conversation,
     NewThread,
     Reply,
@@ -33,7 +34,9 @@ pub struct App {
     
     // Forum state
     pub threads: Vec<Thread>,
+    pub categories: Vec<Category>,
     pub selected_thread: usize,
+    pub selected_category: usize,
     pub selected_comment: usize,
     pub current_thread_id: Option<String>,
     pub comments: Vec<Comment>, // Store comments for the open thread
@@ -61,7 +64,9 @@ impl App {
             password_input: String::new(),
             current_user: None,
             threads: Vec::new(),
+            categories: Vec::new(),
             selected_thread: 0,
+            selected_category: 0,
             selected_comment: 0,
             current_thread_id: None,
             comments: Vec::new(),
@@ -110,6 +115,16 @@ impl App {
             // Continue anyway - user can try again
         }
         
+        // Load categories
+        if let Err(e) = self.load_categories().await {
+            eprintln!("Failed to load categories: {}", e);
+        }
+        
+        Ok(())
+    }
+
+    pub async fn load_categories(&mut self) -> anyhow::Result<()> {
+        self.categories = api::list_categories().await?;
         Ok(())
     }
 
@@ -166,11 +181,18 @@ impl App {
                 None
             };
             
+            let category_id = if self.categories.is_empty() {
+                None
+            } else {
+                Some(self.categories[self.selected_category].id.clone())
+            };
+            
             let new_thread = NewThread {
                 title,
                 author: user.username.clone(),
                 content,
                 image_url,
+                category_id,
             };
             api::create_thread(new_thread).await?;
         }
