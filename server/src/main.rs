@@ -15,6 +15,7 @@ struct Thread {
     title: String,
     author: String,
     content: String,
+    image_url: Option<String>,
     created_at: String,
 }
 
@@ -23,6 +24,7 @@ struct NewThread {
     title: String,
     author: String,
     content: String,
+    image_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
@@ -31,6 +33,7 @@ struct Comment {
     thread_id: String,
     author: String,
     content: String,
+    image_url: Option<String>,
     created_at: String,
 }
 
@@ -39,6 +42,7 @@ struct NewComment {
     thread_id: String,
     author: String,
     content: String,
+    image_url: Option<String>,
 }
 
 type Db = PgPool;
@@ -54,7 +58,7 @@ type Broadcaster = Arc<RwLock<Vec<actix_ws::Session>>>;
 #[get("/threads")]
 async fn list_threads(db: web::Data<Db>) -> impl Responder {
     let rows = sqlx::query_as::<_, Thread>(
-        r#"SELECT t.id, t.title, u.username as author, t.content, t.created_at
+        r#"SELECT t.id, t.title, u.username as author, t.content, t.image_url, t.created_at
            FROM threads t JOIN users u ON t.user_id = u.id
            ORDER BY t.created_at DESC"#
     )
@@ -91,13 +95,14 @@ async fn create_thread(db: web::Data<Db>, broadcaster: web::Data<Broadcaster>, p
     let user_id = user_row.0;
     // Insert thread
     let _ = sqlx::query(
-        r#"INSERT INTO threads (id, title, user_id, content, created_at)
-           VALUES ($1, $2, $3, $4, $5)"#
+        r#"INSERT INTO threads (id, title, user_id, content, image_url, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6)"#
     )
     .bind(id.clone())
     .bind(payload.title.clone())
     .bind(user_id)
     .bind(payload.content.clone())
+    .bind(payload.image_url.clone())
     .bind(created_at.clone())
     .execute(&**db)
     .await;
@@ -108,6 +113,7 @@ async fn create_thread(db: web::Data<Db>, broadcaster: web::Data<Broadcaster>, p
         title: payload.title.clone(),
         author: payload.author.clone(),
         content: payload.content.clone(),
+        image_url: payload.image_url.clone(),
         created_at: created_at.clone(),
     };
     
@@ -126,7 +132,7 @@ async fn create_thread(db: web::Data<Db>, broadcaster: web::Data<Broadcaster>, p
 async fn list_comments(db: web::Data<Db>, path: web::Path<String>) -> impl Responder {
     let thread_id = path.into_inner();
     let rows = sqlx::query_as::<_, Comment>(
-        r#"SELECT c.id, $1 as thread_id, u.username as author, c.content, c.created_at
+        r#"SELECT c.id, $1 as thread_id, u.username as author, c.content, c.image_url, c.created_at
            FROM comments c JOIN users u ON c.user_id = u.id
            WHERE c.thread_id = $2 ORDER BY c.created_at ASC"#
     )
@@ -165,13 +171,14 @@ async fn create_comment(db: web::Data<Db>, payload: web::Json<NewComment>) -> im
     let user_id = user_row.0;
     // Insert comment
     let _ = sqlx::query(
-        r#"INSERT INTO comments (id, thread_id, user_id, content, created_at)
-           VALUES ($1, $2, $3, $4, $5)"#
+        r#"INSERT INTO comments (id, thread_id, user_id, content, image_url, created_at)
+           VALUES ($1, $2, $3, $4, $5, $6)"#
     )
     .bind(id)
     .bind(payload.thread_id.clone())
     .bind(user_id)
     .bind(payload.content.clone())
+    .bind(payload.image_url.clone())
     .bind(created_at)
     .execute(&**db)
     .await;
@@ -232,6 +239,7 @@ async fn main() -> std::io::Result<()> {
                 title TEXT NOT NULL,
                 user_id TEXT NOT NULL,
                 content TEXT NOT NULL,
+                image_url TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (user_id) REFERENCES users(id)
             );"#
@@ -244,6 +252,7 @@ async fn main() -> std::io::Result<()> {
                 thread_id TEXT NOT NULL,
                 user_id TEXT NOT NULL,
                 content TEXT NOT NULL,
+                image_url TEXT,
                 created_at TEXT NOT NULL,
                 FOREIGN KEY (thread_id) REFERENCES threads(id),
                 FOREIGN KEY (user_id) REFERENCES users(id)

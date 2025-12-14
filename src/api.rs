@@ -12,6 +12,7 @@ pub struct Thread {
     pub title: String,
     pub author: String,
     pub content: String,
+    pub image_url: Option<String>,
     pub created_at: String,
 }
 
@@ -20,6 +21,7 @@ pub struct NewThread {
     pub title: String,
     pub author: String,
     pub content: String,
+    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -28,6 +30,7 @@ pub struct Comment {
     pub thread_id: String,
     pub author: String,
     pub content: String,
+    pub image_url: Option<String>,
     pub created_at: String,
 }
 
@@ -36,6 +39,7 @@ pub struct NewComment {
     pub thread_id: String,
     pub author: String,
     pub content: String,
+    pub image_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -84,4 +88,21 @@ pub async fn create_comment(new: NewComment) -> Result<()> {
         .send()
         .await?;
     Ok(())
+}
+
+pub fn create_data_url(image_path: &str) -> Result<String> {
+    let image_data = std::fs::read(image_path)?;
+    let mime_type = match std::path::Path::new(image_path)
+        .extension()
+        .and_then(|ext| ext.to_str())
+    {
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("png") => "image/png",
+        Some("gif") => "image/gif",
+        Some("webp") => "image/webp",
+        _ => "image/png", // default
+    };
+    
+    let base64_data = base64::encode(&image_data);
+    Ok(format!("data:{};base64,{}", mime_type, base64_data))
 }

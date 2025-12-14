@@ -17,6 +17,8 @@ pub enum CurrentFocus {
     Conversation,
     NewThread,
     Reply,
+    ThreadImage,
+    ReplyImage,
 }
 
 pub struct App {
@@ -39,7 +41,9 @@ pub struct App {
     // UI buffers for creating threads and replies
     pub new_thread_title: String,
     pub new_thread_content: String,
+    pub new_thread_image_path: String,
     pub reply_content: String,
+    pub reply_image_path: String,
     // Sub‑focus within NewThread mode (Title vs Content)
     pub new_thread_focus: CurrentFocus,
     
@@ -63,7 +67,9 @@ impl App {
             comments: Vec::new(),
             new_thread_title: String::new(),
             new_thread_content: String::new(),
+            new_thread_image_path: String::new(),
             reply_content: String::new(),
+            reply_image_path: String::new(),
             new_thread_focus: CurrentFocus::Username, // reuse enum for sub‑focus (Title)
             last_refresh: std::time::Instant::now(),
         }
@@ -154,10 +160,17 @@ impl App {
 
     pub async fn create_thread(&mut self, title: String, content: String) -> anyhow::Result<()> {
         if let Some(user) = &self.current_user {
+            let image_url = if !self.new_thread_image_path.is_empty() {
+                Some(api::create_data_url(&self.new_thread_image_path)?)
+            } else {
+                None
+            };
+            
             let new_thread = NewThread {
                 title,
                 author: user.username.clone(),
                 content,
+                image_url,
             };
             api::create_thread(new_thread).await?;
         }
@@ -166,10 +179,17 @@ impl App {
 
     pub async fn create_reply(&mut self, content: String) -> anyhow::Result<()> {
         if let (Some(user), Some(thread_id)) = (&self.current_user, &self.current_thread_id) {
+            let image_url = if !self.reply_image_path.is_empty() {
+                Some(api::create_data_url(&self.reply_image_path)?)
+            } else {
+                None
+            };
+            
             let new_comment = NewComment {
                 thread_id: thread_id.clone(),
                 author: user.username.clone(),
                 content,
+                image_url,
             };
             api::create_comment(new_comment).await?;
             // Refresh comments
