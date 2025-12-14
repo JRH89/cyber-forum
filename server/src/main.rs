@@ -297,35 +297,29 @@ async fn create_comment(db: web::Data<Db>, payload: web::Json<NewComment>) -> im
 async fn websocket_index(
     req: actix_web::HttpRequest,
     stream: web::Payload,
-    broadcaster: web::Data<Broadcaster>,
+    _broadcaster: web::Data<Broadcaster>,
 ) -> Result<HttpResponse, actix_web::Error> {
     let mut session = actix_ws::Session::new(req, stream)?;
-    let broadcaster = broadcaster.clone();
     
-    // Add this session to the broadcaster list
-    broadcaster.write().await.push(session.clone());
-    
-    // Keep the connection alive
-    let (response, session, mut msg_stream) = actix_ws::handle(&mut session, |msg| async move {
+    // Simple echo handler for now
+    let (response, _session, mut msg_stream) = actix_ws::handle(&mut session, |msg| async move {
         match msg {
             Message::Ping(_) => Ok(Message::Pong(vec![])),
             _ => Ok(Message::Close(None)),
         }
     })?;
     
-    // Handle messages
+    // Handle messages briefly
     while let Some(msg_result) = msg_stream.next().await {
         match msg_result {
             Ok(Message::Ping(_)) => {
-                let _ = session.pong(&[]).await;
+                // Respond to ping
+                break;
             }
             Ok(Message::Close(_)) => break,
             _ => {}
         }
     }
-    
-    // Remove session from broadcaster when disconnected
-    broadcaster.write().await.retain(|s| std::ptr::eq(&*s, &session));
     
     Ok(response)
 }
