@@ -1,10 +1,13 @@
 // server/src/main.rs
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use actix_ws::Message;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use chrono::Utc;
 use sqlx::{PgPool, query, query_as};
 use std::env;
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 struct Thread {
@@ -39,6 +42,14 @@ struct NewComment {
 }
 
 type Db = PgPool;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+enum WsMessage {
+    NewThread(Thread),
+    NewComment { thread_id: String, comment: Comment },
+}
+
+type Broadcaster = Arc<RwLock<Vec<actix_ws::Session>>>;
 
 #[get("/threads")]
 async fn list_threads(db: web::Data<Db>) -> impl Responder {
@@ -149,6 +160,32 @@ async fn create_comment(db: web::Data<Db>, payload: web::Json<NewComment>) -> im
     HttpResponse::Created().finish()
 }
 
+#[get("/ws")]
+async fn websocket_index(
+    req: actix_web::HttpRequest,
+    stream: web::Payload,
+    broadcaster: web::Data<Broadcaster>,
+) -> Result<HttpResponse, actix_web::Error> {
+    let mut session = actix_ws::Session::new(req, stream)?;
+    let broadcaster = broadcaster.clone();
+    
+    // Add this session to the broadcaster list
+    broadcaster.write().await.push(session.clone());
+    
+    // Keep the connection alive
+    actix_ws::handle(&mut session, |msg| async move {
+        match msg {
+            Message::Ping(_) => Ok(Message::Pong(vec![])),
+            _ => Ok(Message::Close(None)),
+        }
+    }).await?;
+    
+    // Remove session from broadcaster when disconnected
+    broadcaster.write().await.retain(|s| s.id() != session.id());
+    
+    Ok(HttpResponse::Ok().finish())
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init();
@@ -156,6 +193,9 @@ async fn main() -> std::io::Result<()> {
     let database_url = env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
+    
+    // Create broadcaster for WebSocket connections
+    let broadcaster: Broadcaster = Arc::new(RwLock::new(Vec::new()));
 
     // Run simple migrations to ensure tables exist (executed once at startup)
     let _ = sqlx::query(
@@ -197,10 +237,12 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(broadcaster.clone()))
             .service(list_threads)
             .service(create_thread)
             .service(list_comments)
             .service(create_comment)
+            .service(websocket_index)
     })
     .bind(("0.0.0.0", 8080))?
     .run()
