@@ -42,6 +42,9 @@ pub struct App {
     pub reply_content: String,
     // Sub‑focus within NewThread mode (Title vs Content)
     pub new_thread_focus: CurrentFocus,
+    
+    // Auto-refresh timer
+    pub last_refresh: std::time::Instant,
 }
 
 impl App {
@@ -62,6 +65,7 @@ impl App {
             new_thread_content: String::new(),
             reply_content: String::new(),
             new_thread_focus: CurrentFocus::Username, // reuse enum for sub‑focus (Title)
+            last_refresh: std::time::Instant::now(),
         }
     }
 
@@ -100,6 +104,29 @@ impl App {
             // Continue anyway - user can try again
         }
         
+        Ok(())
+    }
+
+    pub async fn auto_refresh(&mut self) {
+        // Auto-refresh every 10 seconds
+        if self.last_refresh.elapsed().as_secs() >= 10 {
+            if let Err(e) = self.load_threads().await {
+                eprintln!("Auto-refresh failed: {}", e);
+            } else {
+                self.last_refresh = std::time::Instant::now();
+            }
+            
+            // Also refresh comments if we have a thread open
+            if let Some(thread_id) = self.current_thread_id.clone() {
+                if let Err(e) = self.refresh_comments(&thread_id).await {
+                    eprintln!("Failed to refresh comments: {}", e);
+                }
+            }
+        }
+    }
+
+    pub async fn refresh_comments(&mut self, thread_id: &str) -> anyhow::Result<()> {
+        self.comments = api::list_comments(thread_id).await?;
         Ok(())
     }
 

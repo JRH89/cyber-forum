@@ -64,6 +64,9 @@ fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> Re
 
 async fn run_app<B: Backend>(terminal: &mut Terminal<B>, app: &mut App) -> Result<()> {
     loop {
+        // Auto-refresh threads and comments
+        app.auto_refresh().await;
+        
         terminal.draw(|f| ui(f, app))?;
 
         if let Event::Key(key) = event::read()? {

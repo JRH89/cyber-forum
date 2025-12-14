@@ -65,7 +65,7 @@ async fn list_threads(db: web::Data<Db>) -> impl Responder {
     HttpResponse::Ok().json(rows)
 }
 #[post("/threads")]
-async fn create_thread(db: web::Data<Db>, payload: web::Json<NewThread>) -> impl Responder {
+async fn create_thread(db: web::Data<Db>, broadcaster: web::Data<Broadcaster>, payload: web::Json<NewThread>) -> impl Responder {
     let id = Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
     // Insert user if not exists (ON CONFLICT DO NOTHING)
@@ -94,13 +94,31 @@ async fn create_thread(db: web::Data<Db>, payload: web::Json<NewThread>) -> impl
         r#"INSERT INTO threads (id, title, user_id, content, created_at)
            VALUES ($1, $2, $3, $4, $5)"#
     )
-    .bind(id)
+    .bind(id.clone())
     .bind(payload.title.clone())
     .bind(user_id)
     .bind(payload.content.clone())
-    .bind(created_at)
+    .bind(created_at.clone())
     .execute(&**db)
     .await;
+    
+    // Broadcast new thread to WebSocket clients
+    let new_thread = Thread {
+        id: id.clone(),
+        title: payload.title.clone(),
+        author: payload.author.clone(),
+        content: payload.content.clone(),
+        created_at: created_at.clone(),
+    };
+    
+    let msg = WsMessage::NewThread(new_thread);
+    if let Ok(msg_json) = serde_json::to_string(&msg) {
+        let sessions = broadcaster.read().await;
+        for session in sessions.iter() {
+            let _ = session.text(msg_json.clone()).await;
+        }
+    }
+    
     HttpResponse::Created().finish()
 }
 
