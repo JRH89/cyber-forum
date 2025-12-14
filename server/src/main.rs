@@ -1,4 +1,5 @@
 // server/src/main.rs
+mod ssh_server;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use actix_ws::Message;
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,58 @@ use std::env;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use futures_util::StreamExt;
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    env_logger::init();
+    
+    let database_url = env::var("DATABASE_URL")
+        .expect("DATABASE_URL must be set");
+    let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
+    
+    // Start SSH server in background
+    let ssh_handle = tokio::spawn(async {
+        if let Err(e) = ssh_server::start_ssh_server().await {
+            eprintln!("SSH server error: {}", e);
+        }
+    });
+    
+    // Create broadcaster for WebSocket connections
+    let broadcaster: Broadcaster = Arc::new(RwLock::new(Vec::new()));
+    // Insert user if not exists (ON CONFLICT DO NOTHING)
+    let _ = sqlx::query(
+        r#"INSERT INTO users (id, username, password_hash, created_at)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (username) DO NOTHING"#
+    )
+    .bind(Uuid::new_v4().to_string())
+    .bind("admin")
+    .bind("")
+    .bind(Utc::now().to_rfc3339())
+    .execute(&pool)
+    .await;
+    
+    HttpServer::new(move || {
+        App::new()
+            .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(broadcaster.clone()))
+            .service(list_threads)
+            .service(create_thread)
+            .service(list_categories)
+            .service(create_category)
+            .service(check_username)
+            .service(register_user)
+            .service(list_comments)
+            .service(create_comment)
+    })
+    .bind("127.0.0.1:8080")?
+    .run()
+    .await
+}
+
+type Broadcaster = Arc<RwLock<Vec<actix_ws::Session>>>;
+
+type Db = PgPool;
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 struct Thread {
@@ -57,15 +110,11 @@ struct NewComment {
     image_url: Option<String>,
 }
 
-type Db = PgPool;
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 enum WsMessage {
     NewThread(Thread),
     NewComment { thread_id: String, comment: Comment },
 }
-
-type Broadcaster = Arc<RwLock<Vec<actix_ws::Session>>>;
 
 #[get("/threads")]
 async fn list_threads(db: web::Data<Db>) -> impl Responder {
@@ -80,6 +129,7 @@ async fn list_threads(db: web::Data<Db>) -> impl Responder {
     
     HttpResponse::Ok().json(rows)
 }
+
 #[post("/threads")]
 async fn create_thread(db: web::Data<Db>, broadcaster: web::Data<Broadcaster>, payload: web::Json<NewThread>) -> impl Responder {
     let id = Uuid::new_v4().to_string();
@@ -331,6 +381,25 @@ async fn main() -> std::io::Result<()> {
     let database_url = env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
+    
+    // Create SSH server config
+    let ssh_config = ServerConfig::new(
+        Arc::new(|_| {
+            // Accept any key for now (in production, verify against authorized_keys)
+            russh::server::AuthMethod::PublicKey {
+                key: "".to_string(), // Placeholder
+            }
+        })
+    );
+    
+    let ssh_server = SSHServer {
+        policy: Arc::new(ssh_config),
+    };
+    
+    // Start SSH server in background
+    let ssh_handle = tokio::spawn(async move {
+        ssh_server.start().await;
+    });
     
     // Create broadcaster for WebSocket connections
     let broadcaster: Broadcaster = Arc::new(RwLock::new(Vec::new()));
