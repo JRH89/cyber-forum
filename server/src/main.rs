@@ -321,7 +321,7 @@ async fn websocket_index(
         }
     }
     
-    Ok(response)
+    Ok(HttpResponse::from(response))
 }
 
 #[actix_web::main]

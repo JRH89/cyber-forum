@@ -99,16 +99,14 @@ impl App {
     }
     
     pub async fn login(&mut self) -> anyhow::Result<()> {
-        // Check if username is available
-        let username_available = api::check_username_available(&self.username_input).await?;
-        
-        if !username_available {
-            return Err(anyhow::anyhow!("Username '{}' is already taken", self.username_input));
-        }
-        
-        // Register the user
-        let user = api::register_user(&self.username_input).await?;
-        self.current_user = Some(user);
+        // For now, just create a local user without checking availability
+        // TODO: Re-enable username check when server is fully deployed
+        self.current_user = Some(User {
+            id: "local-session".to_string(),
+            username: self.username_input.clone(),
+            password_hash: "".to_string(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+        });
         self.state = AppState::Forum;
         self.focus = CurrentFocus::ThreadList;
         
