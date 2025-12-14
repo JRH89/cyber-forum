@@ -93,7 +93,13 @@ impl App {
         });
         self.state = AppState::Forum;
         self.focus = CurrentFocus::ThreadList;
-        self.load_threads().await?;
+        
+        // Load threads with error handling
+        if let Err(e) = self.load_threads().await {
+            eprintln!("Failed to load threads: {}", e);
+            // Continue anyway - user can try again
+        }
+        
         Ok(())
     }
 

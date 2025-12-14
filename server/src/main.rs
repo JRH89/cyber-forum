@@ -10,7 +10,7 @@ use std::env;
 struct Thread {
     id: String,
     title: String,
-    user_id: String,
+    author: String,
     content: String,
     created_at: String,
 }
@@ -42,7 +42,6 @@ type Db = PgPool;
 
 #[get("/threads")]
 async fn list_threads(db: web::Data<Db>) -> impl Responder {
-    // sqlx async query returning a Vec<Thread>
     let rows = sqlx::query_as::<_, Thread>(
         r#"SELECT t.id, t.title, u.username as author, t.content, t.created_at
            FROM threads t JOIN users u ON t.user_id = u.id
@@ -52,33 +51,8 @@ async fn list_threads(db: web::Data<Db>) -> impl Responder {
     .await
     .unwrap_or_else(|_| vec![]);
     
-    // Note: The SQL query returns 'author' but our struct has 'user_id'. 
-    // Ideally we'd map it or change the struct. For simplicity, we'll assume the client handles it 
-    // or we adjust the struct to have 'author' instead of 'user_id' for the list view.
-    // Actually, let's just return what we have. The client expects 'author'.
-    // We need a separate struct for the API response if it differs from the DB model.
-    // But let's stick to the current flow where we just return the rows.
-    // Wait, the struct `Thread` has `user_id`. The query returns `author`. 
-    // sqlx will fail to map `author` to `user_id`.
-    // Let's fix the struct in this file to match the query response for the list endpoint.
-    // Or better, let's alias it in the query: `u.username as user_id` (hacky but works if we just want the name).
-    // Actually, let's just change the struct to have `author` field instead of `user_id` for serialization?
-    // No, let's keep it simple. We'll alias in SQL.
-    
     HttpResponse::Ok().json(rows)
 }
-
-// We need to adjust the Thread struct to match what we want to send to the client (which expects `author`).
-// And what we select from DB.
-// Let's redefine Thread for the purpose of this API to match the client's expectation.
-// The client `api::Thread` has `author`. The server `Thread` has `user_id`.
-// Let's change server `Thread` to have `author` instead of `user_id` for the response, 
-// or alias it in the query.
-// Let's alias `u.username as user_id` in the query above so it maps to the struct field, 
-// even though it contains the username. The client will see "user_id": "username".
-// Wait, the client struct has `author`.
-// Let's just change the server struct to match the client.
-
 #[post("/threads")]
 async fn create_thread(db: web::Data<Db>, payload: web::Json<NewThread>) -> impl Responder {
     let id = Uuid::new_v4().to_string();

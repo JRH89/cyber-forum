@@ -299,7 +299,6 @@ async fn handle_login_keys(key: crossterm::event::KeyEvent, app: &mut App) -> an
 
 async fn handle_forum_keys(key: crossterm::event::KeyEvent, app: &mut App) -> anyhow::Result<()> {
     match key.code {
-        KeyCode::Char('q') => app.should_quit = true,
         KeyCode::Up => {
             match app.focus {
                 CurrentFocus::ThreadList => {
@@ -326,28 +325,18 @@ async fn handle_forum_keys(key: crossterm::event::KeyEvent, app: &mut App) -> an
                 app.focus = CurrentFocus::Conversation;
             }
         }
-        KeyCode::Char('n') => {
-            app.focus = CurrentFocus::NewThread;
-            app.new_thread_title.clear();
-            app.new_thread_content.clear();
-            app.new_thread_focus = CurrentFocus::Username; // reuse as Title focus
-        }
-        KeyCode::Char('r') => {
-            app.focus = CurrentFocus::Reply;
-            app.reply_content.clear();
-        }
         KeyCode::Enter => {
             match app.focus {
                 CurrentFocus::ThreadList => {
                     app.open_thread(app.selected_thread).await?;
                 }
                 CurrentFocus::NewThread => {
-                    let _ = app.create_thread(app.new_thread_title.clone(), app.new_thread_content.clone()).await;
+                    app.create_thread(app.new_thread_title.clone(), app.new_thread_content.clone()).await?;
                     app.load_threads().await?;
                     app.focus = CurrentFocus::ThreadList;
                 }
                 CurrentFocus::Reply => {
-                    let _ = app.create_reply(app.reply_content.clone()).await;
+                    app.create_reply(app.reply_content.clone()).await?;
                     app.focus = CurrentFocus::Conversation;
                 }
                 _ => {}
@@ -376,6 +365,24 @@ async fn handle_forum_keys(key: crossterm::event::KeyEvent, app: &mut App) -> an
                 }
             } else if app.focus == CurrentFocus::Reply {
                 app.reply_content.push(c);
+            } else if app.focus == CurrentFocus::Username || app.focus == CurrentFocus::Password {
+                // Login input handled in handle_login_keys
+            } else {
+                // Only handle hotkeys when not in input mode
+                match c {
+                    'n' => {
+                        app.focus = CurrentFocus::NewThread;
+                        app.new_thread_title.clear();
+                        app.new_thread_content.clear();
+                        app.new_thread_focus = CurrentFocus::Username;
+                    }
+                    'r' => {
+                        app.focus = CurrentFocus::Reply;
+                        app.reply_content.clear();
+                    }
+                    'q' => app.should_quit = true,
+                    _ => {}
+                }
             }
         }
         KeyCode::Backspace => {
