@@ -1,4 +1,4 @@
-// server/src/main.rs
+// server/src/main.rs - Arch Forum Server v2.0
 mod ssh_server;
 mod terminal_server;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
