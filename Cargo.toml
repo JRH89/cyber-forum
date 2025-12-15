@@ -19,6 +19,5 @@ base64 = "0.21"
 
 [workspace]
 members = [
-    ".",
-    "server"
+    "."
 ]
