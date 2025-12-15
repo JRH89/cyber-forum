@@ -363,6 +363,14 @@ async fn main() -> std::io::Result<()> {
         .execute(&pool)
         .await;
     
+    // Start SSH server in background
+    let pool_clone = pool.clone();
+    tokio::spawn(async move {
+        if let Err(e) = ssh_server::start_ssh_server(pool_clone).await {
+            eprintln!("SSH server error: {}", e);
+        }
+    });
+
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
