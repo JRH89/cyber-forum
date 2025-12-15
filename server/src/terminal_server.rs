@@ -1,7 +1,9 @@
 // terminal_server.rs
 use actix_web::{get, post, web, HttpResponse, Responder};
 use std::sync::Arc;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
+use serde_json;
+use anyhow::Result;
 
 #[get("/terminal")]
 pub async fn terminal_page() -> impl Responder {
@@ -55,7 +57,7 @@ pub async fn terminal_page() -> impl Responder {
 }
 
 #[post("/terminal/cmd")]
-pub async fn handle_command(db: web::Data<Arc<PgPool>>, payload: web::web::Json<serde_json::Value>) -> impl Responder {
+pub pub async fn handle_command(db: web::Data<Arc<PgPool>>, payload: web::Json<serde_json::Value>) -> impl Responder {
     let cmd = payload.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
     
     match cmd {
@@ -84,7 +86,7 @@ pub async fn handle_command(db: web::Data<Arc<PgPool>>, payload: web::web::Json<
     }
 }
 
-async fn get_threads_from_db(pool: &Arc<PgPool>) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+async fn get_threads_from_db(pool: &PgPool) -> Result<Vec<(String, String)>, sqlx::Error> {
     sqlx::query("SELECT title, author FROM threads ORDER BY created_at DESC LIMIT 10")
         .fetch_all(&**pool)
         .await?
@@ -96,7 +98,7 @@ async fn get_threads_from_db(pool: &Arc<PgPool>) -> Result<Vec<(String, String)>
         .collect()
 }
 
-async fn create_thread_in_db(pool: &Arc<PgPool>, title: &str, content: &str, author: &str) -> bool {
+async fn create_thread_in_db(pool: &PgPool, title: &str, content: &str, author: &str) -> Result<bool, sqlx::Error> {
     use uuid::Uuid;
     use chrono::Utc;
     

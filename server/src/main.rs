@@ -1,5 +1,118 @@
 // server/src/main.rs
 mod terminal_server;
+mod ssh_server;
+
+#[cfg(test)]
+mod test_utils;
+
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
+use serde::{Deserialize, Serialize};
+use serde_json;
+use uuid::Uuid;
+use chrono::Utc;
+use sqlx::{PgPool, Row, postgres::PgRow};
+use std::env;
+use std::sync::Arc;
+
+// Re-export terminal server handlers
+pub use terminal_server::{terminal_page, handle_command};
+
+    async fn test_app() -> impl actix_web::dev::Service<
+        actix_http::Request,
+        Response = actix_web::dev::ServiceResponse,
+        Error = actix_web::Error,
+    > {
+        dotenv().ok();
+        let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .connect(&database_url)
+            .await
+            .expect("Failed to create test pool");
+
+        // Create test tables if they don't exist
+        sqlx::migrate!("./migrations")
+            .run(&pool)
+            .await
+            .expect("Failed to run migrations");
+
+        test::init_service(
+            App::new()
+                .app_data(web::Data::new(pool.clone()))
+                .service(index)
+                .service(health)
+                .service(list_threads)
+                .service(create_thread)
+                .service(list_categories)
+                .service(create_category)
+                .service(check_username)
+                .service(register_user)
+                .service(list_comments)
+                .service(create_comment),
+        )
+        .await
+    }
+
+    #[actix_web::test]
+    async fn test_index_get() {
+        let app = test_app().await;
+        let req = test::TestRequest::get().uri("/").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+    }
+
+    #[actix_web::test]
+    async fn test_health_check() {
+        let app = test_app().await;
+        let req = test::TestRequest::get().uri("/health").to_request();
+        let resp = test::call_service(&app, req).await;
+        assert!(resp.status().is_success());
+    }
+
+    #[actix_web::test]
+    async fn test_create_and_list_threads() {
+        let app = test_app().await;
+        
+        // Create a test thread
+        let new_thread = NewThread {
+            title: "Test Thread".to_string(),
+            author: "testuser".to_string(),
+            content: "This is a test thread".to_string(),
+            image_url: None,
+            category_id: None,
+        };
+
+        // Test thread creation
+        let create_req = test::TestRequest::post()
+            .uri("/threads")
+            .set_json(&new_thread)
+            .to_request();
+        let create_resp = test::call_service(&app, create_req).await;
+        assert!(create_resp.status().is_success());
+
+        // Test listing threads
+        let list_req = test::TestRequest::get().uri("/threads").to_request();
+        let list_resp = test::call_service(&app, list_req).await;
+        assert!(list_resp.status().is_success());
+    }
+
+    #[actix_web::test]
+    async fn test_username_availability() {
+        let app = test_app().await;
+        
+        // Test checking available username
+        let check_req = test::TestRequest::get()
+            .uri("/auth/check-username/newuser")
+            .to_request();
+        let check_resp = test::call_service(&app, check_req).await;
+        assert!(check_resp.status().is_success());
+    }
+}
+mod terminal_server;
+mod ssh_server;
+
+#[cfg(test)]
+mod test_utils;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -7,6 +120,7 @@ use uuid::Uuid;
 use chrono::Utc;
 use sqlx::{PgPool, Row};
 use std::env;
+use std::sync::Arc;
 
 #[get("/")]
 async fn index() -> impl Responder {
@@ -284,6 +398,14 @@ async fn main() -> std::io::Result<()> {
         .expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
     
+    // Start SSH server in background
+    let ssh_pool = pool.clone();
+    let _ssh_handle = tokio::spawn(async {
+        if let Err(e) = ssh_server::start_ssh_server(Arc::new(ssh_pool)).await {
+            eprintln!("SSH server error: {}", e);
+        }
+    });
+    
     // Run simple migrations to ensure tables exist (executed once at startup)
     let _ = sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS users (
@@ -353,12 +475,12 @@ async fn main() -> std::io::Result<()> {
             .service(health)
             .service(list_threads)
             .service(create_thread)
-            .service(list_comments)
-            .service(create_comment)
             .service(list_categories)
             .service(create_category)
             .service(check_username)
             .service(register_user)
+            .service(list_comments)
+            .service(create_comment)
             .service(terminal_server::terminal_page)
             .service(terminal_server::handle_command)
             .default_service(web::to(|| async { HttpResponse::Ok().body("Fallback route - server is running!") }))

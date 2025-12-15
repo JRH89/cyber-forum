@@ -1,3 +1,51 @@
-/target
-build_error.log
+# Rust
+/target/
+**/target/
 **/*.rs.bk
+Cargo.lock
+**/Cargo.lock
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Build files
+*.o
+*.so
+*.rlib
+*.dll
+*.dylib
+*.a
+
+# Debug files
+*.d
+*.pdb
+*.lib
+*.exp
+*.ilk
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Local development
+ngrok-bin/
+build_error.log
+
+# Local database
+*.db
+*.sqlite
+*.sqlite3
