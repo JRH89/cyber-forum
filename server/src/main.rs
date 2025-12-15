@@ -1,5 +1,6 @@
 // server/src/main.rs
 mod ssh_server;
+mod terminal_server;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -394,6 +395,7 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
+            .app_data(web::Data::new(Arc::new(pool.clone())))
             .service(list_threads)
             .service(create_thread)
             .service(list_comments)
@@ -402,6 +404,8 @@ async fn main() -> std::io::Result<()> {
             .service(create_category)
             .service(check_username)
             .service(register_user)
+            .service(terminal_server::terminal_page)
+            .service(terminal_server::handle_command)
     })
     .bind(("0.0.0.0", 8080))?
     .run()
