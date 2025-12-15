@@ -7,6 +7,19 @@ use chrono::Utc;
 use sqlx::{PgPool, Row};
 use std::env;
 
+#[get("/")]
+async fn index() -> impl Responder {
+    HttpResponse::Ok().body("Arch Forum Server is running!")
+}
+
+#[get("/health")]
+async fn health() -> impl Responder {
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": "healthy",
+        "timestamp": Utc::now().to_rfc3339()
+    }))
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 struct Thread {
     id: String,
@@ -335,6 +348,8 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
+            .service(index)
+            .service(health)
             .service(list_threads)
             .service(create_thread)
             .service(list_comments)
