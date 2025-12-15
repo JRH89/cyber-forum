@@ -1,61 +1,11 @@
-// server/src/main.rs - Arch Forum Server v2.0
-mod terminal_server;
+// server/src/main.rs
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
 use serde_json;
 use uuid::Uuid;
 use chrono::Utc;
-use sqlx::{PgPool, query, query_as};
+use sqlx::{PgPool, Row};
 use std::env;
-use std::sync::Arc;
-use tokio::sync::RwLock;
-
-#[get("/")]
-async fn index() -> impl Responder {
-    HttpResponse::Ok().body("Arch Forum Server is running!")
-}
-
-#[actix_web::main]
-async fn main() -> std::io::Result<()> {
-    env_logger::init();
-    
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set");
-    let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
-    
-        
-    // Run simple migrations to ensure tables exist (executed once at startup)
-    let _ = sqlx::query(
-        r#"INSERT INTO users (id, username, password_hash, created_at)
-           VALUES ($1, $2, $3, $4)
-           ON CONFLICT (username) DO NOTHING"#
-    )
-    .bind(Uuid::new_v4().to_string())
-    .bind("admin")
-    .bind("")
-    .bind(Utc::now().to_rfc3339())
-    .execute(&pool)
-    .await;
-    
-    HttpServer::new(move || {
-        App::new()
-            .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(broadcaster.clone()))
-            .service(list_threads)
-            .service(create_thread)
-            .service(list_categories)
-            .service(create_category)
-            .service(check_username)
-            .service(register_user)
-            .service(list_comments)
-            .service(create_comment)
-    })
-    .bind("127.0.0.1:8080")?
-    .run()
-    .await
-}
-
-type Db = PgPool;
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
 struct Thread {
@@ -103,6 +53,8 @@ struct NewComment {
     image_url: Option<String>,
 }
 
+type Db = PgPool;
+
 #[get("/threads")]
 async fn list_threads(db: web::Data<Db>) -> impl Responder {
     let rows = sqlx::query_as::<_, Thread>(
@@ -116,7 +68,6 @@ async fn list_threads(db: web::Data<Db>) -> impl Responder {
     
     HttpResponse::Ok().json(rows)
 }
-
 #[post("/threads")]
 async fn create_thread(db: web::Data<Db>, payload: web::Json<NewThread>) -> impl Responder {
     let id = Uuid::new_v4().to_string();
@@ -203,7 +154,7 @@ async fn check_username(db: web::Data<Db>, path: web::Path<String>) -> impl Resp
     .bind(&username)
     .fetch_one(&**db)
     .await
-    .map(|row: (i64,)| row.0 > 0)
+    .map(|row| row.get::<i64, _>("count") > 0)
     .unwrap_or(false);
     
     HttpResponse::Ok().json(serde_json::json!({
@@ -223,7 +174,7 @@ async fn register_user(db: web::Data<Db>, payload: web::Json<serde_json::Value>)
     .bind(username)
     .fetch_one(&**db)
     .await
-    .map(|row: (i64,)| row.0 > 0)
+    .map(|row| row.get::<i64, _>("count") > 0)
     .unwrap_or(false);
     
     if exists {
@@ -319,7 +270,6 @@ async fn main() -> std::io::Result<()> {
         .expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
     
-        
     // Run simple migrations to ensure tables exist (executed once at startup)
     let _ = sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS users (
@@ -385,8 +335,6 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(Arc::new(pool.clone())))
-            .service(index)
             .service(list_threads)
             .service(create_thread)
             .service(list_comments)
@@ -395,8 +343,6 @@ async fn main() -> std::io::Result<()> {
             .service(create_category)
             .service(check_username)
             .service(register_user)
-            .service(terminal_server::terminal_page)
-            .service(terminal_server::handle_command)
     })
     .bind(("0.0.0.0", 8080))?
     .run()
