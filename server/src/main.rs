@@ -1,4 +1,5 @@
 // server/src/main.rs
+mod terminal_server;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -358,6 +359,8 @@ async fn main() -> std::io::Result<()> {
             .service(create_category)
             .service(check_username)
             .service(register_user)
+            .service(terminal_server::terminal_page)
+            .service(terminal_server::handle_command)
             .default_service(web::to(|| async { HttpResponse::Ok().body("Fallback route - server is running!") }))
     })
     .bind(("0.0.0.0", 8080))?
