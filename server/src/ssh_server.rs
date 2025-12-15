@@ -51,7 +51,7 @@ fn handle_client(mut stream: std::net::TcpStream, db_pool: Arc<PgPool>) -> Resul
                     stream.write_all(b"\r\nRecent threads:\r\n")?;
                     if let Ok(threads) = get_threads_from_db(&db_pool) {
                         for (i, thread) in threads.iter().take(10).enumerate() {
-                            let line = format!("[{}] {}\r\n", i + 1, thread.title);
+                            let line = format!("[{}] {}\r\n", i + 1, thread.0);
                             stream.write_all(line.as_bytes())?;
                         }
                     } else {
@@ -114,7 +114,7 @@ fn get_threads_from_db(pool: &PgPool) -> Result<Vec<(String, String)>, Box<dyn s
         let rt = tokio::runtime::Runtime::new().unwrap();
         let result = rt.block_on(async {
             sqlx::query("SELECT title, author FROM threads ORDER BY created_at DESC LIMIT 10")
-                .fetch_all(&*pool_clone)
+                .fetch_all(&pool_clone)
                 .await
         });
         
@@ -159,13 +159,13 @@ fn create_thread_in_db(pool: &PgPool, title: &str, content: &str, author: &str) 
                 .bind(&author)
                 .bind("")
                 .bind(Utc::now().to_rfc3339())
-                .execute(&*pool_clone)
+                .execute(&pool_clone)
                 .await;
             
             // Get actual user ID
             if let Ok(user_row) = sqlx::query("SELECT id FROM users WHERE username = $1")
                 .bind(&author)
-                .fetch_one(&*pool_clone)
+                .fetch_one(&pool_clone)
                 .await {
                 let actual_user_id: String = user_row.get("id");
                 
@@ -177,7 +177,7 @@ fn create_thread_in_db(pool: &PgPool, title: &str, content: &str, author: &str) 
                     .bind(&actual_user_id)
                     .bind(&content)
                     .bind(Utc::now().to_rfc3339())
-                    .execute(&*pool_clone)
+                    .execute(&pool_clone)
                     .await
             } else {
                 Err(sqlx::Error::RowNotFound)

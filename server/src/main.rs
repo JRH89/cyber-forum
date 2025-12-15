@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json;
 use uuid::Uuid;
 use chrono::Utc;
-use sqlx::{PgPool, Row, postgres::PgRow};
+use sqlx::{PgPool, Row};
 use std::env;
 use std::sync::Arc;
 

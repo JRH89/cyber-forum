@@ -57,7 +57,7 @@ pub async fn terminal_page() -> impl Responder {
 }
 
 #[post("/terminal/cmd")]
-pub pub async fn handle_command(db: web::Data<Arc<PgPool>>, payload: web::Json<serde_json::Value>) -> impl Responder {
+pub async fn handle_command(db: web::Data<Arc<PgPool>>, payload: web::Json<serde_json::Value>) -> impl Responder {
     let cmd = payload.get("cmd").and_then(|v| v.as_str()).unwrap_or("");
     
     match cmd {

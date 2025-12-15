@@ -4,9 +4,9 @@ services:
     name: forum-server
     env: rust
     # Build the binary in release mode
-    buildCommand: cargo build -p forum_server --release
+    buildCommand: cd server && cargo build --release
     # The compiled binary lives at target/release/forum_server
-    startCommand: ./target/release/forum_server
+    startCommand: cd server && ./target/release/forum_server
     # Render automatically forwards port 8080, keep the bind call as‑is.
     envVars:
       # DATABASE_URL is injected automatically by the PostgreSQL add‑on.
