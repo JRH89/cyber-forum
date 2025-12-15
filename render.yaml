@@ -4,7 +4,7 @@ services:
     name: forum-server
     env: rust
     # Build the binary in release mode
-    buildCommand: cd server && cargo build --release
+    buildCommand: cd server && cargo build --bin forum_server --release
     # The compiled binary lives at target/release/forum_server
     startCommand: cd server && ./target/release/forum_server
     # Render automatically forwards port 8080, keep the bind call as‑is.
