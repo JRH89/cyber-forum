@@ -1,7 +1,6 @@
 // server/src/main.rs
 mod ssh_server;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
-use actix_ws::Message;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use uuid::Uuid;
@@ -10,7 +9,6 @@ use sqlx::{PgPool, query, query_as};
 use std::env;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use futures_util::StreamExt;
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -21,15 +19,14 @@ async fn main() -> std::io::Result<()> {
     let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
     
     // Start SSH server in background
+    let ssh_pool = pool.clone();
     let ssh_handle = tokio::spawn(async {
-        if let Err(e) = ssh_server::start_ssh_server().await {
+        if let Err(e) = ssh_server::start_ssh_server(Arc::new(ssh_pool)).await {
             eprintln!("SSH server error: {}", e);
         }
     });
     
-    // Create broadcaster for WebSocket connections
-    let broadcaster: Broadcaster = Arc::new(RwLock::new(Vec::new()));
-    // Insert user if not exists (ON CONFLICT DO NOTHING)
+    // Run simple migrations to ensure tables exist (executed once at startup)
     let _ = sqlx::query(
         r#"INSERT INTO users (id, username, password_hash, created_at)
            VALUES ($1, $2, $3, $4)
@@ -59,8 +56,6 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-
-type Broadcaster = Arc<RwLock<Vec<actix_ws::Session>>>;
 
 type Db = PgPool;
 
@@ -110,12 +105,6 @@ struct NewComment {
     image_url: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
-enum WsMessage {
-    NewThread(Thread),
-    NewComment { thread_id: String, comment: Comment },
-}
-
 #[get("/threads")]
 async fn list_threads(db: web::Data<Db>) -> impl Responder {
     let rows = sqlx::query_as::<_, Thread>(
@@ -131,7 +120,7 @@ async fn list_threads(db: web::Data<Db>) -> impl Responder {
 }
 
 #[post("/threads")]
-async fn create_thread(db: web::Data<Db>, broadcaster: web::Data<Broadcaster>, payload: web::Json<NewThread>) -> impl Responder {
+async fn create_thread(db: web::Data<Db>, payload: web::Json<NewThread>) -> impl Responder {
     let id = Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
     // Insert user if not exists (ON CONFLICT DO NOTHING)
@@ -169,25 +158,6 @@ async fn create_thread(db: web::Data<Db>, broadcaster: web::Data<Broadcaster>, p
     .bind(created_at.clone())
     .execute(&**db)
     .await;
-    
-    // Broadcast new thread to WebSocket clients
-    let new_thread = Thread {
-        id: id.clone(),
-        title: payload.title.clone(),
-        author: payload.author.clone(),
-        content: payload.content.clone(),
-        image_url: payload.image_url.clone(),
-        category_id: payload.category_id.clone(),
-        created_at: created_at.clone(),
-    };
-    
-    let msg = WsMessage::NewThread(new_thread);
-    if let Ok(msg_json) = serde_json::to_string(&msg) {
-        let sessions = broadcaster.read().await;
-        for session in sessions.iter() {
-            let _ = session.text(msg_json.clone()).await;
-        }
-    }
     
     HttpResponse::Created().finish()
 }
@@ -343,37 +313,6 @@ async fn create_comment(db: web::Data<Db>, payload: web::Json<NewComment>) -> im
     HttpResponse::Created().finish()
 }
 
-#[get("/ws")]
-async fn websocket_index(
-    req: actix_web::HttpRequest,
-    stream: web::Payload,
-    _broadcaster: web::Data<Broadcaster>,
-) -> Result<HttpResponse, actix_web::Error> {
-    let mut session = actix_ws::Session::new(req, stream)?;
-    
-    // Simple echo handler for now
-    let (response, _session, mut msg_stream) = actix_ws::handle(&mut session, |msg| async move {
-        match msg {
-            Message::Ping(_) => Ok(Message::Pong(vec![])),
-            _ => Ok(Message::Close(None)),
-        }
-    })?;
-    
-    // Handle messages briefly
-    while let Some(msg_result) = msg_stream.next().await {
-        match msg_result {
-            Ok(Message::Ping(_)) => {
-                // Respond to ping
-                break;
-            }
-            Ok(Message::Close(_)) => break,
-            _ => {}
-        }
-    }
-    
-    Ok(HttpResponse::from(response))
-}
-
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init();
@@ -382,28 +321,14 @@ async fn main() -> std::io::Result<()> {
         .expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
     
-    // Create SSH server config
-    let ssh_config = ServerConfig::new(
-        Arc::new(|_| {
-            // Accept any key for now (in production, verify against authorized_keys)
-            russh::server::AuthMethod::PublicKey {
-                key: "".to_string(), // Placeholder
-            }
-        })
-    );
-    
-    let ssh_server = SSHServer {
-        policy: Arc::new(ssh_config),
-    };
-    
     // Start SSH server in background
-    let ssh_handle = tokio::spawn(async move {
-        ssh_server.start().await;
+    let ssh_pool = pool.clone();
+    let ssh_handle = tokio::spawn(async {
+        if let Err(e) = ssh_server::start_ssh_server(Arc::new(ssh_pool)).await {
+            eprintln!("SSH server error: {}", e);
+        }
     });
     
-    // Create broadcaster for WebSocket connections
-    let broadcaster: Broadcaster = Arc::new(RwLock::new(Vec::new()));
-
     // Run simple migrations to ensure tables exist (executed once at startup)
     let _ = sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS users (
@@ -469,7 +394,6 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(web::Data::new(pool.clone()))
-            .app_data(web::Data::new(broadcaster.clone()))
             .service(list_threads)
             .service(create_thread)
             .service(list_comments)
@@ -478,7 +402,6 @@ async fn main() -> std::io::Result<()> {
             .service(create_category)
             .service(check_username)
             .service(register_user)
-            .service(websocket_index)
     })
     .bind(("0.0.0.0", 8080))?
     .run()

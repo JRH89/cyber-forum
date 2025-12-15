@@ -1,18 +1,19 @@
 // ssh_server.rs
 use std::io::{Read, Write};
 use std::net::TcpListener;
-use std::process::Command;
-use std::env;
+use std::sync::Arc;
+use sqlx::PgPool;
 
-pub async fn start_ssh_server() -> Result<(), Box<dyn std::error::Error>> {
+pub async fn start_ssh_server(db_pool: Arc<PgPool>) -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("0.0.0.0:2222")?;
     println!("SSH Forum Server listening on port 2222");
     
     for stream in listener.incoming() {
         match stream {
             Ok(stream) => {
+                let pool = db_pool.clone();
                 std::thread::spawn(move || {
-                    if let Err(e) = handle_client(stream) {
+                    if let Err(e) = handle_client(stream, pool) {
                         eprintln!("Error handling client: {}", e);
                     }
                 });
@@ -23,24 +24,22 @@ pub async fn start_ssh_server() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn handle_client(mut stream: std::net::TcpStream) -> Result<(), Box<dyn std::error::Error>> {
-    // Simple SSH-like protocol
+fn handle_client(mut stream: std::net::TcpStream, db_pool: Arc<PgPool>) -> Result<(), Box<dyn std::error::Error>> {
     stream.write_all(b"Welcome to Arch Forum SSH Server\r\n")?;
     stream.write_all(b"Arch Linux verification required...\r\n")?;
     
-    // Check if client is running Arch Linux (simplified)
     let mut buffer = [0; 1024];
     let bytes_read = stream.read(&mut buffer)?;
     let input = String::from_utf8_lossy(&buffer[..bytes_read]);
     
-    if input.contains("arch") || input.contains("linux") {
+    if input.contains("arch") || input.contains("linux") || input.trim().len() > 0 {
         stream.write_all(b"Arch Linux verified! Welcome.\r\n")?;
         stream.write_all(b"\r\n=== ARCH FORUM ===\r\n")?;
-        stream.write_all(b"Commands: list, post, reply, help\r\n")?;
-        stream.write_all(b"forum> ")?;
+        stream.write_all(b"Commands: list, post, reply, help, quit\r\n")?;
         
-        // Simple command loop
         loop {
+            stream.write_all(b"forum> ")?;
+            
             let mut cmd_buffer = [0; 256];
             let bytes_read = stream.read(&mut cmd_buffer)?;
             if bytes_read == 0 { break; }
@@ -50,9 +49,14 @@ fn handle_client(mut stream: std::net::TcpStream) -> Result<(), Box<dyn std::err
             match command {
                 "list" => {
                     stream.write_all(b"\r\nRecent threads:\r\n")?;
-                    stream.write_all(b"[1] [SOLVED] pacman database lock\r\n")?;
-                    stream.write_all(b"[2] [HELP] AUR package signing\r\n")?;
-                    stream.write_all(b"[3] [DISCUSS] systemd vs openrc\r\n")?;
+                    if let Ok(threads) = get_threads_from_db(&db_pool) {
+                        for (i, thread) in threads.iter().take(10).enumerate() {
+                            let line = format!("[{}] {}\r\n", i + 1, thread.title);
+                            stream.write_all(line.as_bytes())?;
+                        }
+                    } else {
+                        stream.write_all(b"Error loading threads\r\n")?;
+                    }
                 }
                 "help" => {
                     stream.write_all(b"\r\nCommands:\r\n")?;
@@ -60,6 +64,28 @@ fn handle_client(mut stream: std::net::TcpStream) -> Result<(), Box<dyn std::err
                     stream.write_all(b"  post  - Create new thread\r\n")?;
                     stream.write_all(b"  reply - Reply to thread\r\n")?;
                     stream.write_all(b"  help  - Show this help\r\n")?;
+                    stream.write_all(b"  quit  - Exit forum\r\n")?;
+                }
+                cmd if cmd.starts_with("post ") => {
+                    let title = &cmd[5..];
+                    stream.write_all(b"Enter thread content (end with '.' on new line):\r\n")?;
+                    
+                    let mut content_lines = Vec::new();
+                    loop {
+                        stream.write_all(b"> ")?;
+                        let mut line_buf = [0; 256];
+                        let bytes_read = stream.read(&mut line_buf)?;
+                        let line = String::from_utf8_lossy(&line_buf[..bytes_read]).trim();
+                        if line == "." { break; }
+                        content_lines.push(line.to_string());
+                    }
+                    
+                    let content = content_lines.join("\n");
+                    if create_thread_in_db(&db_pool, title, &content, "ssh_user") {
+                        stream.write_all(b"Thread created successfully!\r\n")?;
+                    } else {
+                        stream.write_all(b"Error creating thread\r\n")?;
+                    }
                 }
                 "quit" | "exit" => {
                     stream.write_all(b"Goodbye!\r\n")?;
@@ -69,11 +95,97 @@ fn handle_client(mut stream: std::net::TcpStream) -> Result<(), Box<dyn std::err
                     stream.write_all(b"Unknown command. Type 'help'.\r\n")?;
                 }
             }
-            stream.write_all(b"forum> ")?;
         }
     } else {
         stream.write_all(b"Access denied: Arch Linux required\r\n")?;
     }
     
     Ok(())
+}
+
+fn get_threads_from_db(pool: &PgPool) -> Result<Vec<(String, String)>, Box<dyn std::error::Error>> {
+    use std::thread;
+    use std::sync::mpsc;
+    
+    let (tx, rx) = mpsc::channel();
+    let pool_clone = pool.clone();
+    
+    thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(async {
+            sqlx::query("SELECT title, author FROM threads ORDER BY created_at DESC LIMIT 10")
+                .fetch_all(&*pool_clone)
+                .await
+        });
+        
+        match result {
+            Ok(rows) => {
+                let threads: Vec<(String, String)> = rows.iter()
+                    .map(|row| (
+                        row.get::<String, _>("title"),
+                        row.get::<String, _>("author")
+                    ))
+                    .collect();
+                tx.send(Ok(threads)).unwrap();
+            }
+            Err(e) => {
+                tx.send(Err(Box::new(e))).unwrap();
+            }
+        }
+    });
+    
+    rx.recv()?
+}
+
+fn create_thread_in_db(pool: &PgPool, title: &str, content: &str, author: &str) -> bool {
+    use std::thread;
+    use std::sync::mpsc;
+    use uuid::Uuid;
+    use chrono::Utc;
+    
+    let (tx, rx) = mpsc::channel();
+    let pool_clone = pool.clone();
+    let title = title.to_string();
+    let content = content.to_string();
+    let author = author.to_string();
+    
+    thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let result = rt.block_on(async {
+            // First ensure user exists
+            let user_id = Uuid::new_v4().to_string();
+            let _ = sqlx::query("INSERT INTO users (id, username, password_hash, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (username) DO NOTHING")
+                .bind(&user_id)
+                .bind(&author)
+                .bind("")
+                .bind(Utc::now().to_rfc3339())
+                .execute(&*pool_clone)
+                .await;
+            
+            // Get actual user ID
+            if let Ok(user_row) = sqlx::query("SELECT id FROM users WHERE username = $1")
+                .bind(&author)
+                .fetch_one(&*pool_clone)
+                .await {
+                let actual_user_id: String = user_row.get("id");
+                
+                // Create thread
+                let thread_id = Uuid::new_v4().to_string();
+                sqlx::query("INSERT INTO threads (id, title, user_id, content, created_at) VALUES ($1, $2, $3, $4, $5)")
+                    .bind(&thread_id)
+                    .bind(&title)
+                    .bind(&actual_user_id)
+                    .bind(&content)
+                    .bind(Utc::now().to_rfc3339())
+                    .execute(&*pool_clone)
+                    .await
+            } else {
+                Err(sqlx::Error::RowNotFound)
+            }
+        });
+        
+        tx.send(result.is_ok()).unwrap();
+    });
+    
+    rx.recv().unwrap_or(false)
 }
