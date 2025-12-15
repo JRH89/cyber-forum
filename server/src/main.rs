@@ -1,7 +1,6 @@
 // server/src/main.rs
 mod ssh_server;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
-use actix_ws::Message;
 use serde::{Deserialize, Serialize};
 use serde_json;
 use uuid::Uuid;
@@ -10,31 +9,6 @@ use sqlx::{PgPool, query, query_as};
 use std::env;
 use std::sync::Arc;
 use tokio::sync::RwLock;
-use futures_util::StreamExt;
-
-#[get("/ws")]
-async fn websocket_index(req: actix_web::HttpRequest,
-                         stream: web::Payload,
-) -> Result<HttpResponse, actix_web::Error> {
-    let mut session = actix_ws::Session::new(req, stream)?;
-    
-    // WebSocket session loop
-    while let Some(msg_result) = session.next().await {
-        match msg_result {
-            Ok(Message::Ping(_)) => {
-                let _ = session.pong(&[]).await;
-            }
-            Ok(Message::Text(text)) => {
-                // Echo back or handle commands
-                let _ = session.text(format!("Echo: {}", text)).await;
-            }
-            Ok(Message::Close(_)) => break,
-            _ => {}
-        }
-    }
-    
-    Ok(HttpResponse::Ok().finish())
-}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
@@ -428,7 +402,6 @@ async fn main() -> std::io::Result<()> {
             .service(create_category)
             .service(check_username)
             .service(register_user)
-            .service(websocket_index)
     })
     .bind(("0.0.0.0", 8080))?
     .run()
