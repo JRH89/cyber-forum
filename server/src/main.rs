@@ -358,6 +358,7 @@ async fn main() -> std::io::Result<()> {
             .service(create_category)
             .service(check_username)
             .service(register_user)
+            .default_service(web::to(|| async { HttpResponse::Ok().body("Fallback route - server is running!") }))
     })
     .bind(("0.0.0.0", 8080))?
     .run()
