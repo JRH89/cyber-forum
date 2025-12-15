@@ -16,11 +16,10 @@ use futures_util::StreamExt;
 async fn websocket_index(req: actix_web::HttpRequest,
                          stream: web::Payload,
 ) -> Result<HttpResponse, actix_web::Error> {
-    let res = actix_ws::handle(req, stream);
-    let (response, session, mut msg_stream) = res?;
+    let mut session = actix_ws::Session::new(req, stream)?;
     
     // WebSocket session loop
-    while let Some(msg_result) = msg_stream.next().await {
+    while let Some(msg_result) = session.next().await {
         match msg_result {
             Ok(Message::Ping(_)) => {
                 let _ = session.pong(&[]).await;
@@ -34,7 +33,7 @@ async fn websocket_index(req: actix_web::HttpRequest,
         }
     }
     
-    Ok(response)
+    Ok(HttpResponse::Ok().finish())
 }
 
 #[actix_web::main]
