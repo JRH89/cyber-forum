@@ -11,6 +11,11 @@ use std::env;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
+#[get("/")]
+async fn index() -> impl Responder {
+    HttpResponse::Ok().body("Arch Forum Server is running!")
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     env_logger::init();
@@ -396,6 +401,7 @@ async fn main() -> std::io::Result<()> {
         App::new()
             .app_data(web::Data::new(pool.clone()))
             .app_data(web::Data::new(Arc::new(pool.clone())))
+            .service(index)
             .service(list_threads)
             .service(create_thread)
             .service(list_comments)
