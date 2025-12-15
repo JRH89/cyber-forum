@@ -1,5 +1,4 @@
 // server/src/main.rs - Arch Forum Server v2.0
-mod ssh_server;
 mod terminal_server;
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder};
 use serde::{Deserialize, Serialize};
@@ -24,14 +23,7 @@ async fn main() -> std::io::Result<()> {
         .expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
     
-    // Start SSH server in background
-    let ssh_pool = pool.clone();
-    let ssh_handle = tokio::spawn(async {
-        if let Err(e) = ssh_server::start_ssh_server(Arc::new(ssh_pool)).await {
-            eprintln!("SSH server error: {}", e);
-        }
-    });
-    
+        
     // Run simple migrations to ensure tables exist (executed once at startup)
     let _ = sqlx::query(
         r#"INSERT INTO users (id, username, password_hash, created_at)
@@ -327,14 +319,7 @@ async fn main() -> std::io::Result<()> {
         .expect("DATABASE_URL must be set");
     let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
     
-    // Start SSH server in background
-    let ssh_pool = pool.clone();
-    let ssh_handle = tokio::spawn(async {
-        if let Err(e) = ssh_server::start_ssh_server(Arc::new(ssh_pool)).await {
-            eprintln!("SSH server error: {}", e);
-        }
-    });
-    
+        
     // Run simple migrations to ensure tables exist (executed once at startup)
     let _ = sqlx::query(
         r#"CREATE TABLE IF NOT EXISTS users (
