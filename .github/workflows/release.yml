@@ -1,0 +1,132 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    
+    steps:
+    - name: Install dependencies
+      run: |
+        pacman -Syu --noconfirm
+        pacman -S --noconfirm git rust cargo pkgconf openssl
+        
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Build TUI
+      run: |
+        cd /__w/cyber-forum/cyber-forum
+        cargo build --release
+        
+    - name: Create package
+      run: |
+        cd /__w/cyber-forum/cyber-forum
+        mkdir -p cyber-forum-bin
+        
+        # Copy binary
+        cp target/release/ternimal cyber-forum-bin/
+        
+        # Create install script
+        cat > cyber-forum-bin/install.sh << 'EOF'
+        #!/bin/bash
+        set -e
+        
+        # Check if running on Arch-based distro
+        if ! [ -f /etc/arch-release ] && ! command -v pacman &> /dev/null; then
+            echo "Error: This package is for Arch-based distributions only"
+            echo "Please use SSH access instead: ssh cyber-forum.onrender.com -p 80"
+            exit 1
+        fi
+        
+        # Install to /usr/local/bin
+        sudo cp ternimal /usr/local/bin/
+        sudo chmod +x /usr/local/bin/ternimal
+        
+        echo "Arch Forum TUI installed successfully!"
+        echo "Run with: ternimal"
+        echo "Or access via SSH: ssh cyber-forum.onrender.com -p 80"
+        EOF
+        
+        chmod +x cyber-forum-bin/install.sh
+        
+        # Create README
+        cat > cyber-forum-bin/README.md << 'EOF'
+        # Arch Forum TUI
+        
+        ## Installation
+        ```bash
+        ./install.sh
+        ```
+        
+        ## Usage
+        ```bash
+        ternimal
+        ```
+        
+        ## Requirements
+        - Arch-based Linux distribution
+        - Internet connection for API access
+        
+        ## Alternative Access
+        SSH access available from any system:
+        ```bash
+        ssh cyber-forum.onrender.com -p 80
+        ```
+        EOF
+        
+        # Create tar.gz
+        tar -czf cyber-forum-arch-linux.tar.gz cyber-forum-bin/
+        
+    - name: Get version
+      id: version
+      run: |
+        if [[ $GITHUB_REF == refs/tags/* ]]; then
+          VERSION=${GITHUB_REF#refs/tags/}
+        else
+          VERSION="latest"
+        fi
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        
+    - name: Create Release
+      uses: softprops/action-create-release@v1
+      with:
+        tag_name: ${{ steps.version.outputs.version }}
+        name: Arch Forum ${{ steps.version.outputs.version }}
+        body: |
+          ## Arch Forum TUI Client
+          
+          ### Installation
+          1. Download `cyber-forum-arch-linux.tar.gz`
+          2. Extract: `tar -xzf cyber-forum-arch-linux.tar.gz`
+          3. Install: `cd cyber-forum-bin && ./install.sh`
+          
+          ### Requirements
+          - Arch-based Linux distribution (Arch, Manjaro, EndeavourOS, etc.)
+          
+          ### Alternative Access
+          SSH access available from any system:
+          ```bash
+          ssh cyber-forum.onrender.com -p 80
+          ```
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Upload Release Asset
+      uses: actions/upload-release-asset@v1
+      with:
+        upload_url: ${{ steps.create_release.outputs.upload_url }}
+        asset_path: ./cyber-forum-arch-linux.tar.gz
+        asset_name: cyber-forum-arch-linux.tar.gz
+        asset_content_type: application/gzip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

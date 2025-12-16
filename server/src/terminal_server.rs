@@ -76,7 +76,7 @@ pub async fn handle_command(db: web::Data<Arc<PgPool>>, payload: web::Json<serde
         "quit" => "Goodbye!".to_string(),
         cmd if cmd.starts_with("post ") => {
             let title = &cmd[5..];
-            if create_thread_in_db(&db, title, "Posted from terminal", "terminal_user").await {
+            if create_thread_in_db(&db, title, "Posted from terminal", "terminal_user").await.unwrap_or(false) {
                 format!("Thread '{}' created!", title)
             } else {
                 "Error creating thread".to_string()
@@ -88,7 +88,7 @@ pub async fn handle_command(db: web::Data<Arc<PgPool>>, payload: web::Json<serde
 
 async fn get_threads_from_db(pool: &PgPool) -> Result<Vec<(String, String)>, sqlx::Error> {
     sqlx::query("SELECT title, author FROM threads ORDER BY created_at DESC LIMIT 10")
-        .fetch_all(&**pool)
+        .fetch_all(pool)
         .await?
         .iter()
         .map(|row| Ok((
@@ -112,25 +112,25 @@ async fn create_thread_in_db(pool: &PgPool, title: &str, content: &str, author: 
         .bind(author)
         .bind("")
         .bind(&created_at)
-        .execute(&**pool)
+        .execute(pool)
         .await;
     
     // Get actual user ID
     if let Ok(user_row) = sqlx::query("SELECT id FROM users WHERE username = $1")
         .bind(author)
-        .fetch_one(&**pool)
+        .fetch_one(pool)
         .await {
         let actual_user_id: String = user_row.get("id");
         
         // Create thread
-        sqlx::query("INSERT INTO threads (id, title, user_id, content, created_at) VALUES ($1, $2, $3, $4, $5)")
+        Ok(sqlx::query("INSERT INTO threads (id, title, user_id, content, created_at) VALUES ($1, $2, $3, $4, $5)")
             .bind(&thread_id)
             .bind(title)
             .bind(&actual_user_id)
             .bind(content)
             .bind(&created_at)
             .execute(pool)
-            .await.is_ok()
+            .await.is_ok())
     } else {
         Ok(false)
     }

@@ -192,7 +192,7 @@ fn get_threads_from_db(pool: &PgPool) -> Result<Vec<(String, String)>, Box<dyn s
         }
     });
     
-    rx.recv()?
+    rx.recv()??
 }
 
 fn create_thread_in_db(pool: &PgPool, title: &str, content: &str, author: &str) -> bool {
