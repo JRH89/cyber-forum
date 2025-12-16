@@ -45,7 +45,7 @@ jobs:
         # Check if running on Arch-based distro
         if ! [ -f /etc/arch-release ] && ! command -v pacman &> /dev/null; then
             echo "Error: This package is for Arch-based distributions only"
-            echo "Please use SSH access instead: ssh cyber-forum.onrender.com -p 80"
+            echo "Please build from source: https://github.com/JRH89/cyber-forum"
             exit 1
         fi
         
@@ -53,9 +53,8 @@ jobs:
         sudo cp ternimal /usr/local/bin/
         sudo chmod +x /usr/local/bin/ternimal
         
-        echo "Arch Forum TUI installed successfully!"
+        echo "TERNIMAL TUI installed successfully!"
         echo "Run with: ternimal"
-        echo "Or access via SSH: ssh cyber-forum.onrender.com -p 80"
         EOF
         
         chmod +x cyber-forum-bin/install.sh

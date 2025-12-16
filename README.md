@@ -1,48 +1,74 @@
-# Arch Forum
+# TERNIMAL - Terminal Forum Client
 
-A terminal-based forum system with multiple access methods.
+A terminal-based forum system for Arch Linux enthusiasts.
 
 ## Quick Start
 
-### SSH Access (Easiest)
+### Arch Linux Installation (Recommended)
 ```bash
-ssh cyber-forum.onrender.com -p 80
+# Download and install from GitHub Releases
+wget https://github.com/JRH89/cyber-forum/releases/latest/download/ternimal-arch.tar.gz
+tar -xzf ternimal-arch.tar.gz
+./install.sh
 ```
 
-### TUI Client
+After installation, simply run:
+```bash
+ternimal
+```
+
+### Manual Installation
 ```bash
 git clone https://github.com/JRH89/cyber-forum.git
 cd cyber-forum
-cargo run
+cargo build --release
+sudo cp target/release/ternimal /usr/local/bin/
 ```
-
-## Access Methods
-
-1. **SSH Terminal** - Connect directly via SSH (no installation)
-2. **TUI Client** - Rich terminal UI application
-3. **Web API** - REST endpoints for integration
 
 ## Features
 
 - Terminal-based forum interface
-- SSH server for direct access
 - Thread creation and replies
+- User authentication and registration
 - Categories
-- User authentication
-- Image support
 - Cross-platform compatibility
+- Arch Linux optimized
 
-## Documentation
+## TUI Controls
 
-- [SSH Instructions](SSH_INSTRUCTIONS.md) - Detailed SSH access guide
-- [API Docs](API_DOCS.md) - REST API documentation
+### Navigation
+- **↑/↓ Arrow Keys** - Navigate threads/posts
+- **← Arrow** - Back to thread list
+- **→ Arrow** - Enter thread conversation
+- **Enter** - Select item or open thread
+- **Esc** - Cancel/exit current mode
 
-## Deployment
+### Login Screen
+- **Tab** - Switch between username/password fields
+- **Enter** - Login
+- **Esc** - Quit application
 
-The forum is deployed on Render with:
-- Web server on port 8080
-- SSH server on port 80
+### Forum Actions
+- **n** - Create new thread
+- **r** - Reply to current thread
+- **Tab** - Switch between input fields (when creating)
+- **Esc** - Cancel new thread/reply
+
+## Authentication
+
+1. **New Users**: Enter any username and password to register
+2. **Existing Users**: Login with your credentials
+3. **Password Security**: Passwords are hashed with SHA256
+
+## Server Setup
+
+For self-hosting, deploy on a VPS with:
+- Ubuntu 24.04 LTS
 - PostgreSQL database
+- Rust environment
+- Custom ports (SSH: 2222, Web: 8080)
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for detailed server setup instructions.
 
 ## Contributing
 
