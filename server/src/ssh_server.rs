@@ -52,8 +52,8 @@ async fn handle_client_async(mut stream: std::net::TcpStream, db_pool: Arc<PgPoo
             let bytes_read = stream.read(&mut cmd_buffer)?;
             if bytes_read == 0 { break; }
             
-            let command = String::from_utf8_lossy(&cmd_buffer[..bytes_read]);
-            let command = command.trim();
+            let command_str = String::from_utf8_lossy(&cmd_buffer[..bytes_read]);
+            let command = command_str.trim();
             
             match command {
                 "list" => {
