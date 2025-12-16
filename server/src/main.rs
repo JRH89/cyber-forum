@@ -1,6 +1,7 @@
 // server/src/main.rs
 mod terminal_server;
 mod ssh_server;
+mod seed;
 
 #[cfg(test)]
 mod test_utils;
@@ -287,6 +288,24 @@ async fn create_comment(db: web::Data<Db>, payload: web::Json<NewComment>) -> im
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    let args: Vec<String> = std::env::args().collect();
+    
+    if args.len() > 1 && args[1] == "seed" {
+        // Run database seeding
+        let database_url = std::env::var("DATABASE_URL")
+            .unwrap_or_else(|_| "postgres://localhost/forum_db".to_string());
+        
+        let pool = PgPool::connect(&database_url).await
+            .expect("Failed to connect to database");
+        
+        if let Err(e) = seed::seed_database(&pool).await {
+            eprintln!("Failed to seed database: {}", e);
+            std::process::exit(1);
+        }
+        
+        println!("Database seeded successfully!");
+        return Ok(());
+    }
     env_logger::init();
     
     let database_url = env::var("DATABASE_URL")
