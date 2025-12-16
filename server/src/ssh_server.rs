@@ -5,7 +5,7 @@ use std::sync::Arc;
 use sqlx::{PgPool, Row};
 
 pub async fn start_ssh_server(db_pool: Arc<PgPool>) -> Result<(), Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("0.0.0.0:80")?;
+    let listener = TcpListener::bind("0.0.0.0:2222")?;
     println!("SSH Forum Server listening on port 80");
     
     for stream in listener.incoming() {
