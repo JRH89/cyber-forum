@@ -2,16 +2,20 @@
 services:
   - type: web
     name: forum-server
-    env: rust
-    # Build the binary in release mode
-    buildCommand: cd server && cargo build --release
-    # The compiled binary lives at target/release/forum_server
-    startCommand: cd server && ./target/release/forum_server
-    # Render automatically forwards port 8080, keep the bind call as‑is.
+    env: docker
+    dockerContext: ./server
+    dockerfilePath: ./server/Dockerfile
     envVars:
-      # DATABASE_URL is injected automatically by the PostgreSQL add‑on.
-      # If you enable Redis, uncomment the line below.
-      # REDIS_URL: ${REDIS_URL}
+      - key: DATABASE_URL
+        fromDatabase:
+          name: forum-db
+          property: connectionString
+      - key: RUST_LOG
+        value: info
+      - key: HOST
+        value: 0.0.0.0
+      - key: PORT
+        value: 8080
     autoDeploy: true
 
 databases:
