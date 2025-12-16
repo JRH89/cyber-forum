@@ -2,9 +2,9 @@
 services:
   - type: web
     name: forum-server
-    env: docker
-    dockerContext: ./server
-    dockerfilePath: ./server/Dockerfile
+    env: rust
+    buildCommand: cd server && cargo build --release
+    startCommand: cd server && ./target/release/forum_server
     envVars:
       - key: DATABASE_URL
         fromDatabase:
