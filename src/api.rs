@@ -178,6 +178,15 @@ pub async fn register_user(username: &str, password: &str) -> Result<User> {
         .send()
         .await?;
     
-    let user = resp.json::<User>().await?;
-    Ok(user)
+    let status = resp.status();
+    println!("Registration response status: {}", status);
+    
+    if status.is_success() {
+        let user = resp.json::<User>().await?;
+        Ok(user)
+    } else {
+        let error_text = resp.text().await.unwrap_or_else(|_| "No error body".to_string());
+        println!("Registration error: {} - {}", status, error_text);
+        Err(anyhow::anyhow!("Registration failed: {} - {}", status, error_text))
+    }
 }
