@@ -16,6 +16,7 @@ sqlx = { version = "0.7", default-features = false, features = ["runtime-tokio-r
 tokio = { version = "1", features = ["full"] }
 futures-util = { version = "0.3", default-features = false }
 dotenv = "0.15"
+sha2 = "0.10"
 
 [dev-dependencies]
 actix-rt = "2.0"
