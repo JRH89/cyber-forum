@@ -25,6 +25,7 @@ pub async fn start_ssh_server(db_pool: Arc<PgPool>) -> Result<(), Box<dyn std::e
 }
 
 fn handle_client(mut stream: std::net::TcpStream, db_pool: Arc<PgPool>) -> Result<(), Box<dyn std::error::Error>> {
+    let mut logged_in_user: Option<String> = None;
     stream.write_all(b"Welcome to Arch Forum SSH Server\r\n")?;
     stream.write_all(b"Arch Linux verification required...\r\n")?;
     
@@ -35,7 +36,7 @@ fn handle_client(mut stream: std::net::TcpStream, db_pool: Arc<PgPool>) -> Resul
     if input.contains("arch") || input.contains("linux") || input.trim().len() > 0 {
         stream.write_all(b"Arch Linux verified! Welcome.\r\n")?;
         stream.write_all(b"\r\n=== ARCH FORUM ===\r\n")?;
-        stream.write_all(b"Commands: list, post, reply, help, quit\r\n")?;
+        stream.write_all(b"Commands: login, list, post, reply, help, quit\r\n")?;
         
         loop {
             stream.write_all(b"forum> ")?;
@@ -58,33 +59,90 @@ fn handle_client(mut stream: std::net::TcpStream, db_pool: Arc<PgPool>) -> Resul
                         stream.write_all(b"Error loading threads\r\n")?;
                     }
                 }
+                "login" => {
+                    if logged_in_user.is_some() {
+                        stream.write_all(b"Already logged in.\r\n")?;
+                    } else {
+                        stream.write_all(b"Username: ")?;
+                        let mut user_buf = [0; 64];
+                        let bytes_read = stream.read(&mut user_buf)?;
+                        let username = String::from_utf8_lossy(&user_buf[..bytes_read]).trim();
+                        
+                        stream.write_all(b"Password: ")?;
+                        let mut pass_buf = [0; 64];
+                        let bytes_read = stream.read(&mut pass_buf)?;
+                        let password = String::from_utf8_lossy(&pass_buf[..bytes_read]).trim();
+                        
+                        // For now, accept any login (you can add real auth later)
+                        logged_in_user = Some(username.to_string());
+                        stream.write_all(b"Login successful!\r\n")?;
+                    }
+                }
                 "help" => {
                     stream.write_all(b"\r\nCommands:\r\n")?;
-                    stream.write_all(b"  list  - Show recent threads\r\n")?;
-                    stream.write_all(b"  post  - Create new thread\r\n")?;
-                    stream.write_all(b"  reply - Reply to thread\r\n")?;
+                    if logged_in_user.is_some() {
+                        stream.write_all(b"  list  - Show recent threads\r\n")?;
+                        stream.write_all(b"  post  - Create new thread\r\n")?;
+                        stream.write_all(b"  reply - Reply to thread\r\n")?;
+                    } else {
+                        stream.write_all(b"  list  - Show recent threads (read-only)\r\n")?;
+                        stream.write_all(b"  login - Login to post\r\n")?;
+                    }
                     stream.write_all(b"  help  - Show this help\r\n")?;
                     stream.write_all(b"  quit  - Exit forum\r\n")?;
                 }
-                cmd if cmd.starts_with("post ") => {
-                    let title = &cmd[5..];
-                    stream.write_all(b"Enter thread content (end with '.' on new line):\r\n")?;
-                    
-                    let mut content_lines = Vec::new();
-                    loop {
-                        stream.write_all(b"> ")?;
-                        let mut line_buf = [0; 256];
-                        let bytes_read = stream.read(&mut line_buf)?;
-                        let line = String::from_utf8_lossy(&line_buf[..bytes_read]).trim();
-                        if line == "." { break; }
-                        content_lines.push(line.to_string());
-                    }
-                    
-                    let content = content_lines.join("\n");
-                    if create_thread_in_db(&db_pool, title, &content, "ssh_user") {
-                        stream.write_all(b"Thread created successfully!\r\n")?;
+                cmd if cmd.starts_with("post") => {
+                    if let Some(ref user) = logged_in_user {
+                        let title = &cmd[5..];
+                        stream.write_all(b"Enter thread content (end with '.' on new line):\r\n")?;
+                        
+                        let mut content_lines = Vec::new();
+                        loop {
+                            stream.write_all(b"> ")?;
+                            let mut line_buf = [0; 256];
+                            let bytes_read = stream.read(&mut line_buf)?;
+                            let line = String::from_utf8_lossy(&line_buf[..bytes_read]).trim();
+                            if line == "." { break; }
+                            content_lines.push(line.to_string());
+                        }
+                        
+                        let content = content_lines.join("\n");
+                        if create_thread_in_db(&db_pool, title, &content, user) {
+                            stream.write_all(b"Thread created successfully!\r\n")?;
+                        } else {
+                            stream.write_all(b"Error creating thread\r\n")?;
+                        }
                     } else {
-                        stream.write_all(b"Error creating thread\r\n")?;
+                        stream.write_all(b"Please login to post. Type 'login'.\r\n")?;
+                    }
+                }
+                "reply" => {
+                    if let Some(ref user) = logged_in_user {
+                        stream.write_all(b"Reply to thread ID: ")?;
+                        let mut id_buf = [0; 64];
+                        let bytes_read = stream.read(&mut id_buf)?;
+                        let thread_id = String::from_utf8_lossy(&id_buf[..bytes_read]).trim();
+                        
+                        stream.write_all(b"Enter reply (end with '.' on new line):\r\n")?;
+                        
+                        let mut reply_lines = Vec::new();
+                        loop {
+                            stream.write_all(b"> ")?;
+                            let mut line_buf = [0; 256];
+                            let bytes_read = stream.read(&mut line_buf)?;
+                            let line = String::from_utf8_lossy(&line_buf[..bytes_read]).trim();
+                            if line == "." { break; }
+                            reply_lines.push(line.to_string());
+                        }
+                        
+                        let reply = reply_lines.join("\n");
+                        if create_comment_in_db(&db_pool, &thread_id, &reply, user) {
+                            stream.write_all(b"Reply posted successfully!\r\n")?;
+                        } else {
+                            stream.write_all(b"Error posting reply\r\n")?;
+                        }
+                    } else {
+                        stream.write_all(b"Please login to reply. Type 'login'.\r\n")?;
                     }
                 }
                 "quit" | "exit" => {
@@ -171,12 +229,13 @@ fn create_thread_in_db(pool: &PgPool, title: &str, content: &str, author: &str) 
                 
                 // Create thread
                 let thread_id = Uuid::new_v4().to_string();
-                sqlx::query("INSERT INTO threads (id, title, user_id, content, created_at) VALUES ($1, $2, $3, $4, $5)")
+                sqlx::query("INSERT INTO threads (id, title, user_id, content, created_at, ssh_user) VALUES ($1, $2, $3, $4, $5, $6)")
                     .bind(&thread_id)
                     .bind(&title)
                     .bind(&actual_user_id)
                     .bind(&content)
                     .bind(Utc::now().to_rfc3339())
+                    .bind(true)
                     .execute(&pool_clone)
                     .await
             } else {
@@ -188,4 +247,43 @@ fn create_thread_in_db(pool: &PgPool, title: &str, content: &str, author: &str) 
     });
     
     rx.recv().unwrap_or(false)
+}
+
+async fn create_comment_in_db(pool: &PgPool, thread_id: &str, content: &str, author: &str) -> bool {
+    use uuid::Uuid;
+    use chrono::Utc;
+    
+    let comment_id = Uuid::new_v4().to_string();
+    let created_at = Utc::now().to_rfc3339();
+    
+    // First ensure user exists
+    let user_id = Uuid::new_v4().to_string();
+    let _ = sqlx::query("INSERT INTO users (id, username, password_hash, created_at) VALUES ($1, $2, $3, $4) ON CONFLICT (username) DO NOTHING")
+        .bind(&user_id)
+        .bind(author)
+        .bind("")
+        .bind(&created_at)
+        .execute(pool)
+        .await;
+    
+    // Get actual user ID
+    if let Ok(user_row) = sqlx::query("SELECT id FROM users WHERE username = $1")
+        .bind(author)
+        .fetch_one(pool)
+        .await {
+        let actual_user_id: String = user_row.get("id");
+        
+        // Create comment
+        sqlx::query("INSERT INTO comments (id, thread_id, user_id, content, created_at) VALUES ($1, $2, $3, $4, $5)")
+            .bind(&comment_id)
+            .bind(thread_id)
+            .bind(&actual_user_id)
+            .bind(content)
+            .bind(&created_at)
+            .execute(pool)
+            .await
+            .is_ok()
+    } else {
+        false
+    }
 }
