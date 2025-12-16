@@ -24,8 +24,8 @@ pub async fn start_ssh_server(db_pool: Arc<PgPool>) -> Result<(), Box<dyn std::e
     Ok(())
 }
 
-fn handle_client(mut stream: std::net::TcpStream, db_pool: Arc<PgPool>) -> Result<(), Box<dyn std::error::Error>> {
-    let mut logged_in_user: Option<String> = None;
+fn handle_client(stream: std::net::TcpStream, db_pool: Arc<PgPool>) -> Result<(), Box<dyn std::error::Error>> {
+    let logged_in_user: Option<String> = None;
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
         handle_client_async(stream, db_pool, logged_in_user).await
@@ -52,7 +52,8 @@ async fn handle_client_async(mut stream: std::net::TcpStream, db_pool: Arc<PgPoo
             let bytes_read = stream.read(&mut cmd_buffer)?;
             if bytes_read == 0 { break; }
             
-            let command = String::from_utf8_lossy(&cmd_buffer[..bytes_read]).trim();
+            let command = String::from_utf8_lossy(&cmd_buffer[..bytes_read]);
+            let command = command.trim();
             
             match command {
                 "list" => {
@@ -75,12 +76,13 @@ async fn handle_client_async(mut stream: std::net::TcpStream, db_pool: Arc<PgPoo
                         stream.write_all(b"Username: ")?;
                         let mut user_buf = [0; 64];
                         let bytes_read = stream.read(&mut user_buf)?;
-                        let username = String::from_utf8_lossy(&user_buf[..bytes_read]).trim();
+                        let username_str = String::from_utf8_lossy(&user_buf[..bytes_read]);
+                        let username = username_str.trim();
                         
                         stream.write_all(b"Password: ")?;
                         let mut pass_buf = [0; 64];
                         let bytes_read = stream.read(&mut pass_buf)?;
-                        let password = String::from_utf8_lossy(&pass_buf[..bytes_read]).trim();
+                        let _password = String::from_utf8_lossy(&pass_buf[..bytes_read]).trim();
                         
                         // For now, accept any login (you can add real auth later)
                         logged_in_user = Some(username.to_string());
@@ -110,7 +112,8 @@ async fn handle_client_async(mut stream: std::net::TcpStream, db_pool: Arc<PgPoo
                             stream.write_all(b"> ")?;
                             let mut line_buf = [0; 256];
                             let bytes_read = stream.read(&mut line_buf)?;
-                            let line = String::from_utf8_lossy(&line_buf[..bytes_read]).trim();
+                            let line_str = String::from_utf8_lossy(&line_buf[..bytes_read]);
+                            let line = line_str.trim();
                             if line == "." { break; }
                             content_lines.push(line.to_string());
                         }
@@ -130,7 +133,8 @@ async fn handle_client_async(mut stream: std::net::TcpStream, db_pool: Arc<PgPoo
                         stream.write_all(b"Reply to thread ID: ")?;
                         let mut id_buf = [0; 64];
                         let bytes_read = stream.read(&mut id_buf)?;
-                        let thread_id = String::from_utf8_lossy(&id_buf[..bytes_read]).trim();
+                        let thread_id_str = String::from_utf8_lossy(&id_buf[..bytes_read]);
+                        let thread_id = thread_id_str.trim();
                         
                         stream.write_all(b"Enter reply (end with '.' on new line):\r\n")?;
                         
@@ -139,7 +143,8 @@ async fn handle_client_async(mut stream: std::net::TcpStream, db_pool: Arc<PgPoo
                             stream.write_all(b"> ")?;
                             let mut line_buf = [0; 256];
                             let bytes_read = stream.read(&mut line_buf)?;
-                            let line = String::from_utf8_lossy(&line_buf[..bytes_read]).trim();
+                            let line_str = String::from_utf8_lossy(&line_buf[..bytes_read]);
+                            let line = line_str.trim();
                             if line == "." { break; }
                             reply_lines.push(line.to_string());
                         }
