@@ -1,7 +1,7 @@
 # render.yaml – Render configuration for Cyber Forum
 services:
   - type: web
-    name: forum-server
+    name: forum-server-v2
     env: rust
     buildCommand: cd server && cargo build --release
     startCommand: cd server && ./target/release/forum_server

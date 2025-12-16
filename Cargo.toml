@@ -17,7 +17,3 @@ color-eyre = "0.6"
 reqwest = { version = "0.12", features = ["json", "native-tls"] }
 base64 = "0.21"
 
-[workspace]
-members = [
-    "."
-]
