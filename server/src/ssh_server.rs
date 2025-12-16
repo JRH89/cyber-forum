@@ -26,6 +26,13 @@ pub async fn start_ssh_server(db_pool: Arc<PgPool>) -> Result<(), Box<dyn std::e
 
 fn handle_client(mut stream: std::net::TcpStream, db_pool: Arc<PgPool>) -> Result<(), Box<dyn std::error::Error>> {
     let mut logged_in_user: Option<String> = None;
+    let rt = tokio::runtime::Runtime::new()?;
+    rt.block_on(async {
+        handle_client_async(stream, db_pool, logged_in_user).await
+    })
+}
+
+async fn handle_client_async(mut stream: std::net::TcpStream, db_pool: Arc<PgPool>, mut logged_in_user: Option<String>) -> Result<(), Box<dyn std::error::Error>> {
     stream.write_all(b"Welcome to Arch Forum SSH Server\r\n")?;
     stream.write_all(b"Arch Linux verification required...\r\n")?;
     
@@ -51,7 +58,9 @@ fn handle_client(mut stream: std::net::TcpStream, db_pool: Arc<PgPool>) -> Resul
                 "list" => {
                     stream.write_all(b"\r\nRecent threads:\r\n")?;
                     if let Ok(threads) = get_threads_from_db(&db_pool) {
+                        let mut result = String::new();
                         for (i, thread) in threads.iter().take(10).enumerate() {
+                            result.push_str(&format!("[{}] {}\n", i + 1, thread.0));
                             let line = format!("[{}] {}\r\n", i + 1, thread.0);
                             stream.write_all(line.as_bytes())?;
                         }
@@ -192,7 +201,7 @@ fn get_threads_from_db(pool: &PgPool) -> Result<Vec<(String, String)>, Box<dyn s
         }
     });
     
-    rx.recv()??
+    Ok(rx.recv()??.into())
 }
 
 fn create_thread_in_db(pool: &PgPool, title: &str, content: &str, author: &str) -> bool {

@@ -65,7 +65,7 @@ pub async fn handle_command(db: web::Data<Arc<PgPool>>, payload: web::Json<serde
             if let Ok(threads) = get_threads_from_db(&db).await {
                 let mut result = String::new();
                 for (i, thread) in threads.iter().take(5).enumerate() {
-                    result.push_str(&format!("[{}] {}\n", i + 1, thread.title));
+                    result.push_str(&format!("[{}] {}\n", i + 1, thread.0));
                 }
                 result
             } else {
