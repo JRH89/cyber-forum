@@ -2,8 +2,6 @@
 use crate::api::{self, Thread, NewThread, NewComment, User, Comment, Category};
 // use crate::models::{User, Comment};
 // use ratatui::widgets::ListState;
-use uuid::Uuid;
-use chrono;
 
 #[derive(PartialEq)]
 pub enum AppState {
@@ -16,12 +14,9 @@ pub enum CurrentFocus {
     Username,
     Password,
     ThreadList,
-    Categories,
     Conversation,
     NewThread,
     Reply,
-    ThreadImage,
-    ReplyImage,
 }
 
 pub struct App {
@@ -99,13 +94,18 @@ impl App {
     }
     
     pub async fn login(&mut self) -> anyhow::Result<()> {
-        // Try to login first
-        if let Ok(user) = api::login_user(&self.username_input, &self.password_input).await {
-            // Login successful
+        // For debugging - try to register without password validation first
+        println!("Attempting to register user: {}", self.username_input);
+        
+        // Try to register new user
+        if let Ok(user) = api::register_user(&self.username_input, &self.password_input).await {
+            println!("Registration successful!");
             self.current_user = Some(user);
         } else {
-            // Login failed, try to register new user
-            if let Ok(user) = api::register_user(&self.username_input, &self.password_input).await {
+            println!("Registration failed, trying login...");
+            // Try to login first
+            if let Ok(user) = api::login_user(&self.username_input, &self.password_input).await {
+                println!("Login successful!");
                 self.current_user = Some(user);
             } else {
                 return Err(anyhow::anyhow!("Invalid username/password or registration failed"));
