@@ -366,7 +366,7 @@ async fn main() -> std::io::Result<()> {
     // Start SSH server in background
     let pool_clone = pool.clone();
     tokio::spawn(async move {
-        if let Err(e) = ssh_server::start_ssh_server(pool_clone).await {
+        if let Err(e) = ssh_server::start_ssh_server(Arc::new(pool_clone)).await {
             eprintln!("SSH server error: {}", e);
         }
     });

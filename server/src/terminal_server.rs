@@ -129,9 +129,9 @@ async fn create_thread_in_db(pool: &PgPool, title: &str, content: &str, author: 
             .bind(&actual_user_id)
             .bind(content)
             .bind(&created_at)
-            .execute(&**pool)
+            .execute(pool)
             .await.is_ok()
     } else {
-        false
+        Ok(false)
     }
 }

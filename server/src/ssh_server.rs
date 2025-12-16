@@ -2,7 +2,7 @@
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::sync::Arc;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 
 pub async fn start_ssh_server(db_pool: Arc<PgPool>) -> Result<(), Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("0.0.0.0:80")?;
@@ -136,7 +136,7 @@ fn handle_client(mut stream: std::net::TcpStream, db_pool: Arc<PgPool>) -> Resul
                         }
                         
                         let reply = reply_lines.join("\n");
-                        if create_comment_in_db(&db_pool, &thread_id, &reply, user) {
+                        if create_comment_in_db(&db_pool, &thread_id, &reply, user).await {
                             stream.write_all(b"Reply posted successfully!\r\n")?;
                         } else {
                             stream.write_all(b"Error posting reply\r\n")?;
