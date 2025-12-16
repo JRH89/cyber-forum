@@ -1,5 +1,5 @@
 // src/app.rs
-use crate::api::{self, Thread, NewThread, NewComment, User, Comment, Category};
+use crate::api::{self, Thread, NewThread, NewComment, User, Comment, Category, delete_all_threads};
 // use crate::models::{User, Comment};
 // use ratatui::widgets::ListState;
 
@@ -94,21 +94,28 @@ impl App {
     }
     
     pub async fn login(&mut self) -> anyhow::Result<()> {
-        // For debugging - try to register without password validation first
-        println!("Attempting to register user: {}", self.username_input);
+        println!("Attempting login for user: {}", self.username_input);
         
-        // Try to register new user
-        if let Ok(user) = api::register_user(&self.username_input, &self.password_input).await {
-            println!("Registration successful!");
-            self.current_user = Some(user);
-        } else {
-            println!("Registration failed, trying login...");
-            // Try to login first
-            if let Ok(user) = api::login_user(&self.username_input, &self.password_input).await {
+        // Try login first
+        match api::login_user(&self.username_input, &self.password_input).await {
+            Ok(user) => {
                 println!("Login successful!");
                 self.current_user = Some(user);
-            } else {
-                return Err(anyhow::anyhow!("Invalid username/password or registration failed"));
+            }
+            Err(e) => {
+                println!("Login failed with error: {}", e);
+                println!("Trying registration...");
+                // Try to register new user
+                match api::register_user(&self.username_input, &self.password_input).await {
+                    Ok(user) => {
+                        println!("Registration successful!");
+                        self.current_user = Some(user);
+                    }
+                    Err(e) => {
+                        println!("Registration failed with error: {}", e);
+                        return Err(anyhow::anyhow!("Invalid username/password or registration failed: {}", e));
+                    }
+                }
             }
         }
         
@@ -223,6 +230,14 @@ impl App {
             // Refresh comments
             self.comments = api::list_comments(thread_id).await?;
         }
+        Ok(())
+    }
+
+    pub async fn clear_all_threads(&mut self) -> anyhow::Result<()> {
+        delete_all_threads().await?;
+        self.threads.clear();
+        self.comments.clear();
+        self.current_thread_id = None;
         Ok(())
     }
 }

@@ -57,7 +57,6 @@ pub struct NewComment {
 pub struct User {
     pub id: String,
     pub username: String,
-    pub password_hash: String,
     pub created_at: String,
 }
 
@@ -127,6 +126,7 @@ pub async fn list_categories() -> Result<Vec<Category>> {
     Ok(categories)
 }
 
+#[allow(dead_code)]
 pub async fn create_category(name: String, description: Option<String>) -> Result<()> {
     let payload = serde_json::json!({
         "name": name,
@@ -141,6 +141,7 @@ pub async fn create_category(name: String, description: Option<String>) -> Resul
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn check_username_available(username: &str) -> Result<bool> {
     let resp = client()
         .get(&format!("{}/auth/check-username/{}", BASE_URL, username))
@@ -148,6 +149,14 @@ pub async fn check_username_available(username: &str) -> Result<bool> {
         .await?;
     let result: serde_json::Value = resp.json().await?;
     Ok(result.get("available").and_then(|v| v.as_bool()).unwrap_or(false))
+}
+
+pub async fn delete_all_threads() -> Result<()> {
+    client()
+        .delete(&format!("{}/threads", BASE_URL))
+        .send()
+        .await?;
+    Ok(())
 }
 
 pub async fn login_user(username: &str, password: &str) -> Result<User> {
@@ -162,8 +171,16 @@ pub async fn login_user(username: &str, password: &str) -> Result<User> {
         .send()
         .await?;
     
-    let user = resp.json::<User>().await?;
-    Ok(user)
+    let status = resp.status();
+    if status.is_success() {
+        let text = resp.text().await?;
+        println!("Raw login response: {}", text);
+        let user = serde_json::from_str::<User>(&text)?;
+        Ok(user)
+    } else {
+        let error_text = resp.text().await.unwrap_or_else(|_| "No error body".to_string());
+        Err(anyhow::anyhow!("Login failed: {} - {}", status, error_text))
+    }
 }
 
 pub async fn register_user(username: &str, password: &str) -> Result<User> {

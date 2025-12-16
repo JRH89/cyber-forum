@@ -199,15 +199,40 @@ async fn login_user(db: web::Data<Db>, payload: web::Json<serde_json::Value>) ->
         }));
     }
     
-    // Temporarily bypass database for debugging - accept any login
-    let user_id = Uuid::new_v4().to_string();
-    let created_at = Utc::now().to_rfc3339();
+    // Hash the provided password
+    let mut hasher = Sha256::new();
+    hasher.update(password.as_bytes());
+    let password_hash = format!("{:x}", hasher.finalize());
     
-    HttpResponse::Ok().json(serde_json::json!({
-        "id": user_id,
-        "username": username,
-        "created_at": created_at
-    }))
+    // Check if user exists and password matches
+    let user_result = sqlx::query(
+        r#"SELECT id, username, password_hash, created_at FROM users WHERE username = $1"#
+    )
+    .bind(username)
+    .fetch_one(&**db)
+    .await;
+    
+    match user_result {
+        Ok(row) => {
+            let stored_hash: String = row.get("password_hash");
+            if stored_hash == password_hash {
+                HttpResponse::Ok().json(serde_json::json!({
+                    "id": row.get::<String, _>("id"),
+                    "username": row.get::<String, _>("username"),
+                    "created_at": row.get::<String, _>("created_at")
+                }))
+            } else {
+                HttpResponse::Unauthorized().json(serde_json::json!({
+                    "error": "Invalid password"
+                }))
+            }
+        }
+        Err(_) => {
+            HttpResponse::Unauthorized().json(serde_json::json!({
+                "error": "User not found"
+            }))
+        }
+    }
 }
 
 #[post("/auth/register")]
@@ -221,9 +246,40 @@ async fn register_user(db: web::Data<Db>, payload: web::Json<serde_json::Value>)
         }));
     }
     
-    // Temporarily skip database check for debugging
+    // Check if username already exists
+    let exists = sqlx::query(
+        r#"SELECT COUNT(*) as count FROM users WHERE username = $1"#
+    )
+    .bind(username)
+    .fetch_one(&**db)
+    .await
+    .map(|row| row.get::<i64, _>("count") > 0)
+    .unwrap_or(false);
+    
+    if exists {
+        return HttpResponse::BadRequest().json(serde_json::json!({
+            "error": "Username already taken"
+        }));
+    }
+    
+    // Hash password
+    let mut hasher = Sha256::new();
+    hasher.update(password.as_bytes());
+    let password_hash = format!("{:x}", hasher.finalize());
+    
+    // Create user
     let user_id = Uuid::new_v4().to_string();
     let created_at = Utc::now().to_rfc3339();
+    
+    let _ = sqlx::query(
+        r#"INSERT INTO users (id, username, password_hash, created_at) VALUES ($1, $2, $3, $4)"#
+    )
+    .bind(&user_id)
+    .bind(username)
+    .bind(&password_hash)
+    .bind(&created_at)
+    .execute(&**db)
+    .await;
     
     HttpResponse::Created().json(serde_json::json!({
         "id": user_id,
@@ -289,6 +345,64 @@ async fn create_comment(db: web::Data<Db>, payload: web::Json<NewComment>) -> im
     HttpResponse::Created().finish()
 }
 
+#[actix_web::delete("/threads")]
+async fn delete_all_threads(db: web::Data<Db>) -> impl Responder {
+    let _ = sqlx::query("DELETE FROM comments")
+        .execute(&**db)
+        .await;
+    let _ = sqlx::query("DELETE FROM threads")
+        .execute(&**db)
+        .await;
+    HttpResponse::Ok().finish()
+}
+
+#[actix_web::delete("/threads/{id}")]
+async fn delete_thread(db: web::Data<Db>, path: web::Path<String>) -> impl Responder {
+    let thread_id = path.into_inner();
+    
+    // Delete comments for this thread first
+    let _ = sqlx::query("DELETE FROM comments WHERE thread_id = $1")
+        .bind(&thread_id)
+        .execute(&**db)
+        .await;
+    
+    // Delete the thread
+    let result = sqlx::query("DELETE FROM threads WHERE id = $1")
+        .bind(&thread_id)
+        .execute(&**db)
+        .await;
+    
+    match result {
+        Ok(_) => HttpResponse::Ok().finish(),
+        Err(_) => HttpResponse::NotFound().finish(),
+    }
+}
+
+#[actix_web::delete("/users")]
+async fn delete_all_users(db: web::Data<Db>) -> impl Responder {
+    let _ = sqlx::query("DELETE FROM comments")
+        .execute(&**db)
+        .await;
+    let _ = sqlx::query("DELETE FROM threads")
+        .execute(&**db)
+        .await;
+    let _ = sqlx::query("DELETE FROM users")
+        .execute(&**db)
+        .await;
+    HttpResponse::Ok().finish()
+}
+
+#[actix_web::delete("/categories")]
+async fn delete_all_categories(db: web::Data<Db>) -> impl Responder {
+    let _ = sqlx::query("UPDATE threads SET category_id = NULL")
+        .execute(&**db)
+        .await;
+    let _ = sqlx::query("DELETE FROM categories")
+        .execute(&**db)
+        .await;
+    HttpResponse::Ok().finish()
+}
+
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let args: Vec<String> = std::env::args().collect();
@@ -329,7 +443,10 @@ async fn main() -> std::io::Result<()> {
         }
         Err(e) => {
             eprintln!("Database connection failed: {}", e);
-            panic!("Cannot start without database connection");
+            println!("Continuing without database for local testing...");
+            // Create a dummy pool for testing
+            let dummy_url = "postgresql://localhost/test";
+            PgPool::connect(dummy_url).await.expect("Failed to create dummy pool")
         }
     };
     
@@ -411,8 +528,12 @@ async fn main() -> std::io::Result<()> {
             .service(health)
             .service(list_threads)
             .service(create_thread)
+            .service(delete_all_threads)
+            .service(delete_thread)
             .service(list_categories)
             .service(create_category)
+            .service(delete_all_categories)
+            .service(delete_all_users)
             .service(check_username)
             .service(login_user)
             .service(register_user)
