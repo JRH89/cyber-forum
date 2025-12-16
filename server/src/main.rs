@@ -389,13 +389,13 @@ async fn main() -> std::io::Result<()> {
         }
     };
     
-    // Start SSH server in background
-    let ssh_pool = pool.clone();
-    let _ssh_handle = tokio::spawn(async {
-        if let Err(e) = ssh_server::start_ssh_server(Arc::new(ssh_pool)).await {
-            eprintln!("SSH server error: {}", e);
-        }
-    });
+    // SSH server disabled for Render deployment
+    // let ssh_pool = pool.clone();
+    // let _ssh_handle = tokio::spawn(async {
+    //     if let Err(e) = ssh_server::start_ssh_server(Arc::new(ssh_pool)).await {
+    //         eprintln!("SSH server error: {}", e);
+    //     }
+    // });
     
     // Run simple migrations to ensure tables exist (executed once at startup)
     let _ = sqlx::query(
