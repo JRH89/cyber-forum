@@ -30,7 +30,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy the binary from the builder
-COPY --from=builder /usr/src/forum-server/target/release/forum-server /usr/local/bin/
+COPY --from=builder /usr/src/forum-server/target/release/forum_server /usr/local/bin/
 
 # Set the working directory
 WORKDIR /usr/local/bin
@@ -44,4 +44,4 @@ ENV PORT=8080
 EXPOSE 8080
 
 # Run the application
-CMD ["forum-server"]
+CMD ["./forum_server"]
