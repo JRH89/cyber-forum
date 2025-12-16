@@ -109,7 +109,9 @@ fn draw_login_screen(f: &mut ratatui::Frame, app: &App) {
         )
         .split(size);
 
-    let title = Paragraph::new("TERNIMAL LOGIN")
+    let title_text = "TERNIMAL\n\nTerminal Forum Client";
+    
+    let title = Paragraph::new(title_text)
         .style(Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))
         .alignment(ratatui::layout::Alignment::Center)
         .block(Block::default().borders(Borders::ALL));
