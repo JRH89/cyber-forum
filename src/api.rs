@@ -150,9 +150,26 @@ pub async fn check_username_available(username: &str) -> Result<bool> {
     Ok(result.get("available").and_then(|v| v.as_bool()).unwrap_or(false))
 }
 
-pub async fn register_user(username: &str) -> Result<User> {
+pub async fn login_user(username: &str, password: &str) -> Result<User> {
     let payload = serde_json::json!({
-        "username": username
+        "username": username,
+        "password": password
+    });
+    
+    let resp = client()
+        .post(&format!("{}/auth/login", BASE_URL))
+        .json(&payload)
+        .send()
+        .await?;
+    
+    let user = resp.json::<User>().await?;
+    Ok(user)
+}
+
+pub async fn register_user(username: &str, password: &str) -> Result<User> {
+    let payload = serde_json::json!({
+        "username": username,
+        "password": password
     });
     
     let resp = client()
