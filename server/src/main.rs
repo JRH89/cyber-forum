@@ -377,8 +377,17 @@ async fn main() -> std::io::Result<()> {
         database_url
     };
     
-    println!("Connecting to database with URL: {}", &db_url[..db_url.find('@').unwrap_or(db_url.len())]);
-    let pool = PgPool::connect(&db_url).await.expect("Failed to connect to Postgres");
+    println!("Connecting to database...");
+    let pool = match PgPool::connect(&db_url).await {
+        Ok(pool) => {
+            println!("Database connected successfully!");
+            pool
+        }
+        Err(e) => {
+            eprintln!("Database connection failed: {}", e);
+            panic!("Cannot start without database connection");
+        }
+    };
     
     // Start SSH server in background
     let ssh_pool = pool.clone();
