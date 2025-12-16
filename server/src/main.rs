@@ -310,7 +310,16 @@ async fn main() -> std::io::Result<()> {
     
     let database_url = env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set");
-    let pool = PgPool::connect(&database_url).await.expect("Failed to connect to Postgres");
+    
+    // Add SSL mode if not present
+    let db_url = if !database_url.contains("sslmode") {
+        format!("{}?sslmode=require", database_url)
+    } else {
+        database_url
+    };
+    
+    println!("Connecting to database with URL: {}", &db_url[..db_url.find('@').unwrap_or(db_url.len())]);
+    let pool = PgPool::connect(&db_url).await.expect("Failed to connect to Postgres");
     
     // Start SSH server in background
     let ssh_pool = pool.clone();
