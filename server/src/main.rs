@@ -450,7 +450,7 @@ async fn main() -> std::io::Result<()> {
         }
     };
     
-    // SSH server disabled for Render deployment
+    // SSH server - uncomment when Render SSH access is enabled (paid tier)
     // let ssh_pool = pool.clone();
     // let _ssh_handle = tokio::spawn(async {
     //     if let Err(e) = ssh_server::start_ssh_server(Arc::new(ssh_pool)).await {
